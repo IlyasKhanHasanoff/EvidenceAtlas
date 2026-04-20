@@ -229,15 +229,27 @@ def list_sources():
     ]
 
 
-def search(query: str, subject: str, min_terms: int):
+def search(query: str, subject: str, source_id: str, min_terms: int, phrase_only: bool):
     normalized_query = query.strip()
     if not normalized_query:
         return []
 
     query_tokens = unique(tokenize(normalized_query))
+    lowered_query = normalized_query.lower()
 
     with connect() as conn:
-        if subject:
+        if subject and source_id:
+            rows = conn.execute(
+                """
+                SELECT source_ref, title, author, year, subject, page, excerpt, keywords_json
+                FROM excerpts
+                WHERE subject = ? AND source_row_id IN (
+                    SELECT id FROM sources WHERE source_id = ?
+                )
+                """,
+                (subject, source_id),
+            ).fetchall()
+        elif subject:
             rows = conn.execute(
                 """
                 SELECT source_ref, title, author, year, subject, page, excerpt, keywords_json
@@ -245,6 +257,17 @@ def search(query: str, subject: str, min_terms: int):
                 WHERE subject = ?
                 """,
                 (subject,),
+            ).fetchall()
+        elif source_id:
+            rows = conn.execute(
+                """
+                SELECT source_ref, title, author, year, subject, page, excerpt, keywords_json
+                FROM excerpts
+                WHERE source_row_id IN (
+                    SELECT id FROM sources WHERE source_id = ?
+                )
+                """,
+                (source_id,),
             ).fetchall()
         else:
             rows = conn.execute(
@@ -259,6 +282,10 @@ def search(query: str, subject: str, min_terms: int):
         keywords = json.loads(row[7] or "[]")
         combined = set(tokenize(" ".join([row[1], row[2], row[4], row[6], *keywords])))
         matched_terms = [token for token in query_tokens if token in combined]
+        phrase_match = lowered_query in row[6].lower() or lowered_query in row[1].lower()
+
+        if phrase_only and not phrase_match:
+            continue
         if len(matched_terms) < min_terms:
             continue
 
@@ -273,10 +300,11 @@ def search(query: str, subject: str, min_terms: int):
                 "excerpt": row[6],
                 "matches": matched_terms,
                 "matchCount": len(matched_terms),
+                "phraseMatch": phrase_match,
             }
         )
 
-    return sorted(matches, key=lambda item: (-item["matchCount"], item["page"]))
+    return sorted(matches, key=lambda item: (-int(item["phraseMatch"]), -item["matchCount"], item["page"]))
 
 
 def safe_filename(name: str) -> str:
@@ -423,7 +451,9 @@ class EvidenceHandler(BaseHTTPRequestHandler):
             payload = search(
                 query.get("q", [""])[0],
                 query.get("subject", [""])[0],
+                query.get("sourceId", [""])[0],
                 int(query.get("minTerms", ["2"])[0]),
+                query.get("phraseOnly", ["0"])[0] == "1",
             )
             self._send_json({"resultCount": len(payload), "results": payload})
             return

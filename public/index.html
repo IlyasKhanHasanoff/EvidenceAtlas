@@ -54,9 +54,27 @@
             </label>
 
             <label class="field">
+              <span>Limit to source</span>
+              <select id="source-filter" name="sourceId">
+                <option value="">All indexed sources</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="search-row">
+            <label class="field">
               <span>Minimum matching terms</span>
               <input id="min-score" name="min-score" type="range" min="1" max="6" value="2">
               <small id="min-score-label">2 matching terms</small>
+            </label>
+
+            <label class="field checkbox-field">
+              <span>Search mode</span>
+              <label class="checkbox-row" for="phrase-only">
+                <input id="phrase-only" name="phraseOnly" type="checkbox" value="1">
+                <strong>Require exact phrase match</strong>
+              </label>
+              <small>When enabled, only exact phrase hits appear. When disabled, term-overlap evidence is also shown.</small>
             </label>
           </div>
 
@@ -144,7 +162,10 @@
     <article class="result-card">
       <div class="result-topline">
         <span class="subject-pill"></span>
-        <span class="score-pill"></span>
+        <div class="result-badges">
+          <span class="phrase-pill"></span>
+          <span class="score-pill"></span>
+        </div>
       </div>
       <h3 class="result-title"></h3>
       <p class="result-meta"></p>

@@ -1,7 +1,9 @@
 const queryInput = document.querySelector("#query");
 const subjectFilter = document.querySelector("#subject-filter");
+const sourceFilter = document.querySelector("#source-filter");
 const minScoreInput = document.querySelector("#min-score");
 const minScoreLabel = document.querySelector("#min-score-label");
+const phraseOnlyInput = document.querySelector("#phrase-only");
 const statusMessage = document.querySelector("#status-message");
 const stats = document.querySelector("#stats");
 const results = document.querySelector("#results");
@@ -54,6 +56,23 @@ const renderSubjects = (subjects) => {
   }
 };
 
+const renderSources = (sources) => {
+  const currentValue = sourceFilter.value;
+  const options = [
+    '<option value="">All indexed sources</option>',
+    ...sources.map(
+      (source) =>
+        `<option value="${escapeHtml(source.sourceId)}">${escapeHtml(source.title)} (${escapeHtml(source.author)})</option>`
+    )
+  ];
+
+  sourceFilter.innerHTML = options.join("");
+
+  if (sources.some((source) => source.sourceId === currentValue)) {
+    sourceFilter.value = currentValue;
+  }
+};
+
 const renderEmptyState = (message) => {
   results.innerHTML = `<div class="empty-state">${message}</div>`;
   resultCount.textContent = "0 matches";
@@ -73,6 +92,7 @@ const renderResults = (matches) => {
   matches.forEach((match) => {
     const fragment = resultTemplate.content.cloneNode(true);
     fragment.querySelector(".subject-pill").textContent = match.subject;
+    fragment.querySelector(".phrase-pill").textContent = match.phraseMatch ? "Exact phrase" : "Related evidence";
     fragment.querySelector(".score-pill").textContent = `${match.matchCount} matched terms`;
     fragment.querySelector(".result-title").textContent = match.title;
     fragment.querySelector(".result-meta").textContent =
@@ -120,6 +140,7 @@ const refreshCollection = async () => {
 
   renderStats(statsPayload);
   renderSubjects(subjectsPayload.subjects);
+  renderSources(sourcesPayload.sources);
   renderUploads(sourcesPayload.sources);
 };
 
@@ -135,7 +156,9 @@ const searchEvidence = async () => {
   const params = new URLSearchParams({
     q: query,
     subject: subjectFilter.value,
-    minTerms: minScoreInput.value
+    sourceId: sourceFilter.value,
+    minTerms: minScoreInput.value,
+    phraseOnly: phraseOnlyInput.checked ? "1" : "0"
   });
 
   const response = await fetch(`/api/search?${params.toString()}`);
@@ -146,7 +169,9 @@ const searchEvidence = async () => {
   }
 
   statusMessage.textContent =
-    "Search completed across the persistent evidence database. Results show exact citations only; no synthesized answer is produced.";
+    phraseOnlyInput.checked
+      ? "Search completed in exact-phrase mode. Only literal phrase hits from indexed excerpts are shown."
+      : "Search completed across the persistent evidence database. Results show exact citations only; no synthesized answer is produced.";
   renderResults(payload.results);
 };
 

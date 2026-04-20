@@ -9,6 +9,7 @@ Evidence Atlas is a retrieval-only evidence finder for scanned books. It stores 
 - Accepts PDF uploads through the web UI and stores them on the server.
 - Extracts page text from text-based PDFs and creates page-level excerpt records.
 - Marks image-only scans as `needs_ocr` instead of pretending they were searchable.
+- Supports exact-phrase mode and source-specific filtering for tighter citation lookup.
 - Returns exact excerpts, page numbers, source IDs, and metadata.
 - Avoids generative answers, summaries, and suggestions.
 
@@ -28,7 +29,8 @@ Evidence Atlas is a retrieval-only evidence finder for scanned books. It stores 
 ## Search behavior
 
 - Search uses term overlap only.
-- Results are ranked by matched term count, then page number.
+- Search can also require exact phrase hits.
+- Results are ranked by exact-phrase hit first, then matched term count, then page number.
 - Every result is shown as an exact excerpt with citation metadata.
 - The UI does not generate narrative answers.
 
