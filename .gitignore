@@ -1,0 +1,8 @@
+node_modules/
+uploads/
+data/evidence.sqlite
+data/evidence.sqlite-shm
+data/evidence.sqlite-wal
+.env
+__pycache__/
+*.log

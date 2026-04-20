@@ -1,0 +1,94 @@
+{
+  "records": [
+    {
+      "sourceId": "BK-001-P041",
+      "title": "The Sanitary Condition of the Labouring Population",
+      "author": "Edwin Chadwick",
+      "year": 1842,
+      "subject": "Public Health",
+      "page": 41,
+      "keywords": ["sanitation", "drainage", "urban reform", "mortality"],
+      "excerpt": "The annual loss of life from filth and bad ventilation are greater than the loss from death or wounds in any wars in which the country has been engaged in modern times."
+    },
+    {
+      "sourceId": "BK-001-P118",
+      "title": "The Sanitary Condition of the Labouring Population",
+      "author": "Edwin Chadwick",
+      "year": 1842,
+      "subject": "Public Health",
+      "page": 118,
+      "keywords": ["drainage", "city", "sewers", "disease"],
+      "excerpt": "The primary and most important measures, and at the same time the most practicable, and within the recognised province of public administration, are drainage, the removal of all refuse of habitations, streets, and roads, and the improvement of the supplies of water."
+    },
+    {
+      "sourceId": "BK-002-P067",
+      "title": "How the Other Half Lives",
+      "author": "Jacob A. Riis",
+      "year": 1890,
+      "subject": "Urban Poverty",
+      "page": 67,
+      "keywords": ["tenements", "crowding", "sanitation", "cities"],
+      "excerpt": "The foul core of New York's slums was the tenement; its crowded rooms and unclean courts bred both disease and the despair that accompanied it."
+    },
+    {
+      "sourceId": "BK-002-P132",
+      "title": "How the Other Half Lives",
+      "author": "Jacob A. Riis",
+      "year": 1890,
+      "subject": "Urban Poverty",
+      "page": 132,
+      "keywords": ["reform", "inspection", "health", "housing"],
+      "excerpt": "With the opening of dark rooms to light and air, with stricter inspection, and with better yard drainage, the whole aspect of the block was changed."
+    },
+    {
+      "sourceId": "BK-003-P212",
+      "title": "The History of the Standard Oil Company",
+      "author": "Ida M. Tarbell",
+      "year": 1904,
+      "subject": "Industrial History",
+      "page": 212,
+      "keywords": ["railroad", "rebates", "evidence", "competition"],
+      "excerpt": "There is no more important single factor in the growth of the Standard Oil Company than the secret rebate from the railroads."
+    },
+    {
+      "sourceId": "BK-004-P089",
+      "title": "Narrative of the Life of Frederick Douglass",
+      "author": "Frederick Douglass",
+      "year": 1845,
+      "subject": "Abolition",
+      "page": 89,
+      "keywords": ["education", "slavery", "evidence", "freedom"],
+      "excerpt": "From that moment, I understood the pathway from slavery to freedom. It was just what I wanted, and I got it at a time when I the least expected it."
+    },
+    {
+      "sourceId": "BK-005-P154",
+      "title": "The Souls of Black Folk",
+      "author": "W. E. B. Du Bois",
+      "year": 1903,
+      "subject": "Sociology",
+      "page": 154,
+      "keywords": ["education", "reconstruction", "evidence", "history"],
+      "excerpt": "Men we shall have only as we make manhood the object of the work of the schools, intelligence, broad sympathy, knowledge of the world that was and is, and of the relation of men to it."
+    },
+    {
+      "sourceId": "BK-006-P023",
+      "title": "The Jungle",
+      "author": "Upton Sinclair",
+      "year": 1906,
+      "subject": "Food Safety",
+      "page": 23,
+      "keywords": ["meatpacking", "inspection", "filth", "reform"],
+      "excerpt": "There would be meat stored in great piles in rooms; and the water from leaky roofs would drip over it, and thousands of rats would race about on it."
+    },
+    {
+      "sourceId": "BK-006-P271",
+      "title": "The Jungle",
+      "author": "Upton Sinclair",
+      "year": 1906,
+      "subject": "Food Safety",
+      "page": 271,
+      "keywords": ["federal response", "inspection", "reform", "law"],
+      "excerpt": "The public, once aroused to the facts, demanded that the old careless methods be replaced by inspection responsible to the nation."
+    }
+  ]
+}

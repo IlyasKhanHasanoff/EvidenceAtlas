@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evidence Atlas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Retrieval-Only Research Interface</p>
+        <h1>Search scanned books for cited evidence, not generated answers.</h1>
+        <p class="hero-text">
+          Every search only returns indexed excerpts, page references, and source metadata. The interface never writes
+          an answer for the user. It only surfaces evidence from the stored collection.
+        </p>
+      </div>
+
+      <aside class="hero-card">
+        <p class="card-label">System Rules</p>
+        <ul class="rules-list">
+          <li>No generative summaries</li>
+          <li>No suggestive completions</li>
+          <li>Only indexed excerpts from uploaded or seeded books</li>
+          <li>Every result shows page, source, and exact excerpt</li>
+        </ul>
+      </aside>
+    </header>
+
+    <main class="workspace">
+      <section class="panel search-panel">
+        <form id="search-form" class="search-form">
+          <label class="field">
+            <span>Question or subject</span>
+            <textarea
+              id="query"
+              name="query"
+              rows="4"
+              placeholder="Example: What evidence is there about public sanitation reforms in industrial cities?"
+            ></textarea>
+          </label>
+
+          <div class="search-row">
+            <label class="field">
+              <span>Limit to subject tag</span>
+              <select id="subject-filter" name="subject">
+                <option value="">All indexed subjects</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Minimum matching terms</span>
+              <input id="min-score" name="min-score" type="range" min="1" max="6" value="2">
+              <small id="min-score-label">2 matching terms</small>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button type="submit" class="primary-button">Search evidence</button>
+            <button type="button" id="load-example" class="secondary-button">Load example query</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel status-panel">
+        <div>
+          <p class="card-label">Collection Status</p>
+          <h2>Persistent collection backed by a local evidence store.</h2>
+        </div>
+        <p id="status-message" class="status-message">
+          Seeded excerpts are available immediately. Upload new PDFs to add persistent sources and searchable passages.
+        </p>
+        <div id="stats" class="stats-grid"></div>
+      </section>
+
+      <section class="panel upload-panel">
+        <div>
+          <p class="card-label">PDF Intake</p>
+          <h2>Upload books into the evidence database.</h2>
+        </div>
+        <p class="status-message">
+          Text-based PDFs are indexed immediately. If a scan has no text layer, it is stored and marked as needing OCR
+          instead of being silently treated as searchable.
+        </p>
+
+        <form id="upload-form" class="upload-form">
+          <div class="search-row">
+            <label class="field">
+              <span>Subject tag</span>
+              <input id="upload-subject" name="subject" type="text" placeholder="Example: Public Health">
+            </label>
+
+            <label class="field">
+              <span>Author override</span>
+              <input id="upload-author" name="author" type="text" placeholder="Optional">
+            </label>
+          </div>
+
+          <div class="search-row">
+            <label class="field">
+              <span>Year override</span>
+              <input id="upload-year" name="year" type="text" placeholder="Optional">
+            </label>
+
+            <label class="field upload-dropzone" for="pdf-files">
+              <span>PDF files</span>
+              <input id="pdf-files" name="pdfs" type="file" accept="application/pdf" multiple>
+              <strong>Choose one or more PDFs</strong>
+              <small>Files are uploaded to the local server, parsed into page-level excerpts, and stored persistently.</small>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button type="submit" class="primary-button">Upload and index PDFs</button>
+          </div>
+        </form>
+
+        <div class="upload-meta">
+          <p id="upload-status" class="status-message">No uploads yet.</p>
+          <div id="upload-list" class="upload-list"></div>
+        </div>
+      </section>
+
+      <section class="panel results-panel">
+        <div class="results-header">
+          <div>
+            <p class="card-label">Results</p>
+            <h2>Exact excerpts from the evidence database</h2>
+          </div>
+          <p id="result-count" class="result-count">0 matches</p>
+        </div>
+
+        <div id="results" class="results-list" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <template id="result-template">
+    <article class="result-card">
+      <div class="result-topline">
+        <span class="subject-pill"></span>
+        <span class="score-pill"></span>
+      </div>
+      <h3 class="result-title"></h3>
+      <p class="result-meta"></p>
+      <blockquote class="excerpt"></blockquote>
+      <div class="match-section">
+        <p class="match-label">Matched terms</p>
+        <div class="match-tags"></div>
+      </div>
+    </article>
+  </template>
+
+  <template id="upload-template">
+    <article class="upload-item">
+      <strong class="upload-name"></strong>
+      <span class="upload-summary"></span>
+      <span class="upload-status-line"></span>
+    </article>
+  </template>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
