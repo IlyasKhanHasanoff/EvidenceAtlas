@@ -86,8 +86,8 @@ class handler(BaseHTTPRequestHandler):
             self._send_json(
                 answer_question(
                     query,
+                    topic=(payload.get("topic") or "").strip(),
                     subject=(payload.get("subject") or "").strip(),
-                    sub_subject=(payload.get("subSubject") or "").strip(),
                     source_id=(payload.get("sourceId") or "").strip(),
                 )
             )

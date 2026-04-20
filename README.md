@@ -9,6 +9,7 @@ Evidence Atlas is now a repo-backed app rather than only a local website. The sa
 
 - Shared library data lives in [docs/library/index.json](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\library\index.json)
 - Shared PDFs live in [docs/library/pdfs](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\library\pdfs)
+- Shared PDF metadata lives in [docs/library/source-manifest.json](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\library\source-manifest.json)
 - Large local import staging lives in [library-inbox](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\library-inbox)
 - Developer-shared PDF staging lives in [repo-pdf-drop](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\repo-pdf-drop)
 - The app UI lives in [docs/index.html](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\index.html), [docs/app.js](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\app.js), and [docs/styles.css](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\styles.css)
@@ -22,7 +23,7 @@ Evidence Atlas is now a repo-backed app rather than only a local website. The sa
 - Large PDFs can be dropped into `library-inbox/` and imported without pushing the whole file through the browser.
 - Shared developer PDFs can be committed into `repo-pdf-drop/` and imported into the library without removing them from that repo folder.
 - Quoted words or phrases are treated as exact constraints; everything else uses question-analysis-based retrieval.
-- Subjects and optional sub-subjects can be assigned during ingestion, and search can stay at the subject level or narrow to one sub-subject.
+- Sources can now be organized as `topic -> subject`, and the filters include searchable topic and subject dropdowns.
 - The app can now answer a question from the indexed evidence and cite the pages it used. If the evidence is weak, it says so instead of inventing an answer.
 - The app is installable as a lightweight PWA via the web manifest and service worker.
 
@@ -65,8 +66,9 @@ This repo is also ready for Vercel:
 - Browser uploads copy PDFs into `docs/library/pdfs/`.
 - Large books can be copied into `library-inbox/` first, then imported from the app with one button.
 - Developers can also commit PDFs into `repo-pdf-drop/`, push them, and import them from the app with one button.
+- PDFs already committed into `docs/library/pdfs/` can be indexed from the app using the shared `source-manifest.json`.
 - A background job extracts excerpts and updates `docs/library/index.json`.
-- Each source can carry a subject plus an optional sub-subject.
+- Each source can carry a `topic` plus an optional `subject`.
 - Duplicate original filenames are skipped so the same book is not imported repeatedly.
 - After that, commit and push the changed library files so GitHub visitors get the new books too.
 

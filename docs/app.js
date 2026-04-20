@@ -1,6 +1,8 @@
 const queryInput = document.querySelector("#query");
+const topicSearch = document.querySelector("#topic-search");
+const topicFilter = document.querySelector("#topic-filter");
+const subjectSearch = document.querySelector("#subject-search");
 const subjectFilter = document.querySelector("#subject-filter");
-const subsubjectFilter = document.querySelector("#subsubject-filter");
 const sourceFilter = document.querySelector("#source-filter");
 const statusMessage = document.querySelector("#status-message");
 const stats = document.querySelector("#stats");
@@ -17,7 +19,9 @@ const uploadModeMessage = document.querySelector("#upload-mode-message");
 const uploadForm = document.querySelector("#upload-form");
 const inboxForm = document.querySelector("#inbox-form");
 const repoDropForm = document.querySelector("#repo-drop-form");
+const libraryPdfForm = document.querySelector("#library-pdf-form");
 const uploadStatus = document.querySelector("#upload-status");
+const libraryPdfList = document.querySelector("#library-pdf-list");
 const inboxList = document.querySelector("#inbox-list");
 const repoDropList = document.querySelector("#repo-drop-list");
 const jobList = document.querySelector("#job-list");
@@ -57,7 +61,7 @@ let library = { sources: [], records: [] };
 let pollHandle = null;
 let localMode = false;
 
-const exampleQuery = "What evidence is there about sanitation reform in industrial cities?";
+const exampleQuery = "What does the library say about intention in hadith?";
 
 const escapeHtml = (value) =>
   String(value)
@@ -141,7 +145,7 @@ const conceptPresent = (phrase, positionsMap, window = 10) => {
 };
 
 const scoreRecord = (record, analysis) => {
-  const fullText = [record.title, record.author, record.subject, record.subSubject || "", record.excerpt, ...(record.keywords || [])].join(" ");
+  const fullText = [record.title, record.author, record.topic || "", record.subject || "", record.excerpt, ...(record.keywords || [])].join(" ");
   const rawTokens = (fullText.toLowerCase().match(/[a-z0-9]+/g) || []);
   const normalizedTokens = rawTokens.map(normalizeTerm);
   const normalizedSet = new Set(normalizedTokens);
@@ -159,7 +163,7 @@ const scoreRecord = (record, analysis) => {
   const focusHits = analysis.focusTerms.filter((term) => normalizedSet.has(term));
   const expandedHits = analysis.expandedTerms.filter((term) => normalizedSet.has(term) && !focusHits.includes(term));
   const conceptHits = analysis.conceptPhrases.filter((phrase) => conceptPresent(phrase, positionsMap));
-  const titleText = `${record.title} ${record.author} ${record.subject} ${record.subSubject || ""}`.toLowerCase();
+  const titleText = `${record.title} ${record.author} ${record.topic || ""} ${record.subject || ""}`.toLowerCase();
   const titleFocusHits = analysis.focusTerms.filter((term) => titleText.includes(term));
 
   let score = 0;
@@ -194,7 +198,8 @@ const renderStats = () => {
   const values = [
     { value: library.records.length, label: "Indexed excerpts" },
     { value: library.sources.length, label: "Sources" },
-    { value: unique(library.records.map((record) => record.subject)).length, label: "Subjects" },
+    { value: unique(library.records.map((record) => record.topic).filter(Boolean)).length, label: "Topics" },
+    { value: unique(library.records.map((record) => record.subject).filter(Boolean)).length, label: "Subjects" },
     { value: library.sources.filter((source) => source.ingestionStatus === "needs_ocr").length, label: "Need OCR" }
   ];
 
@@ -206,35 +211,46 @@ const renderStats = () => {
   });
 };
 
+const filterBySearch = (values, searchText) => {
+  const needle = searchText.trim().toLowerCase();
+  if (!needle) return values;
+  return values.filter((value) => value.toLowerCase().includes(needle));
+};
+
+const renderTopics = () => {
+  const currentValue = topicFilter.value;
+  const topics = filterBySearch(
+    unique(library.sources.map((source) => source.topic).filter(Boolean)),
+    topicSearch.value
+  );
+  topicFilter.innerHTML = [
+    '<option value="">All topics</option>',
+    ...topics.map((topic) => `<option value="${escapeHtml(topic)}">${escapeHtml(topic)}</option>`)
+  ].join("");
+  if (topics.includes(currentValue)) {
+    topicFilter.value = currentValue;
+  } else {
+    topicFilter.value = "";
+  }
+};
+
 const renderSubjects = () => {
   const currentValue = subjectFilter.value;
-  const subjects = unique(library.sources.map((source) => source.subject).filter(Boolean));
+  const available = library.sources
+    .filter((source) => !topicFilter.value || source.topic === topicFilter.value)
+    .map((source) => normalizeOptionalText(source.subject))
+    .filter(Boolean);
+  const subjects = filterBySearch(unique(available), subjectSearch.value);
+
   subjectFilter.innerHTML = [
     '<option value="">All subjects</option>',
     ...subjects.map((subject) => `<option value="${escapeHtml(subject)}">${escapeHtml(subject)}</option>`)
   ].join("");
+
   if (subjects.includes(currentValue)) {
     subjectFilter.value = currentValue;
-  }
-};
-
-const renderSubsubjects = () => {
-  const currentValue = subsubjectFilter.value;
-  const available = library.sources
-    .filter((source) => !subjectFilter.value || source.subject === subjectFilter.value)
-    .map((source) => normalizeOptionalText(source.subSubject))
-    .filter(Boolean);
-  const subsubjects = unique(available);
-
-  subsubjectFilter.innerHTML = [
-    '<option value="">All sub-subjects</option>',
-    ...subsubjects.map((subsubject) => `<option value="${escapeHtml(subsubject)}">${escapeHtml(subsubject)}</option>`)
-  ].join("");
-
-  if (subsubjects.includes(currentValue)) {
-    subsubjectFilter.value = currentValue;
   } else {
-    subsubjectFilter.value = "";
+    subjectFilter.value = "";
   }
 };
 
@@ -242,8 +258,8 @@ const renderSources = () => {
   const currentValue = sourceFilter.value;
   const filteredSources = library.sources.filter(
     (source) =>
-      (!subjectFilter.value || source.subject === subjectFilter.value) &&
-      (!subsubjectFilter.value || normalizeOptionalText(source.subSubject) === subsubjectFilter.value)
+      (!topicFilter.value || source.topic === topicFilter.value) &&
+      (!subjectFilter.value || normalizeOptionalText(source.subject) === subjectFilter.value)
   );
   sourceFilter.innerHTML = [
     '<option value="">All sources</option>',
@@ -298,7 +314,7 @@ const renderAnswer = (payload) => {
     const fragment = citationTemplate.content.cloneNode(true);
     fragment.querySelector(".item-name").textContent = `[${citation.marker}] ${citation.title}`;
     fragment.querySelector(".item-summary").textContent =
-      `${citation.author} | ${citation.year} | ${citation.subSubject ? `${citation.subject} / ${citation.subSubject}` : citation.subject} | Page ${citation.page}`;
+      `${citation.author} | ${citation.year} | ${citation.subject ? `${citation.topic} / ${citation.subject}` : citation.topic} | Page ${citation.page}`;
     fragment.querySelector(".item-detail").textContent = `"${citation.excerpt}"`;
     answerCitations.append(fragment);
   });
@@ -321,14 +337,14 @@ const renderResults = (matches) => {
   matches.forEach((match) => {
     const fragment = resultTemplate.content.cloneNode(true);
     fragment.querySelector(".subject-pill").textContent =
-      match.subSubject ? `${match.subject} / ${match.subSubject}` : match.subject;
+      match.subject ? `${match.topic} / ${match.subject}` : match.topic;
     fragment.querySelector(".phrase-pill").textContent = match.exactPhraseMatch ? "Quoted phrase hit" : "Contextual match";
     fragment.querySelector(".concept-pill").textContent =
       match.conceptHits.length ? `${match.conceptHits.length} concept hits` : "Question analysis";
     fragment.querySelector(".score-pill").textContent = `${match.score} relevance`;
     fragment.querySelector(".result-title").textContent = match.title;
     fragment.querySelector(".result-meta").textContent =
-      `${match.author} | ${match.year} | ${match.subSubject ? `${match.subSubject} | ` : ""}Page ${match.page} | ${match.sourceId}`;
+      `${match.author} | ${match.year} | ${match.subject ? `${match.subject} | ` : ""}Page ${match.page} | ${match.sourceId}`;
     fragment.querySelector(".excerpt").textContent = `"${match.excerpt}"`;
 
     const tags = fragment.querySelector(".match-tags");
@@ -403,7 +419,7 @@ const renderSourceList = () => {
     const fragment = listCardTemplate.content.cloneNode(true);
     fragment.querySelector(".item-name").textContent = source.title;
     fragment.querySelector(".item-summary").textContent =
-      `${source.excerptCount} excerpts | ${source.subSubject ? `${source.subject} / ${source.subSubject}` : source.subject}`;
+      `${source.excerptCount} excerpts | ${source.subject ? `${source.topic} / ${source.subject}` : source.topic}`;
     fragment.querySelector(".item-detail").textContent =
       source.pdfPath ? `Saved in repo | ${source.ingestionStatus}` : `Repo seed | ${source.ingestionStatus}`;
     sourceList.append(fragment);
@@ -415,8 +431,8 @@ const fetchLibrary = async () => {
   if (!response.ok) throw new Error("The repo library index could not be loaded.");
   library = await response.json();
   renderStats();
+  renderTopics();
   renderSubjects();
-  renderSubsubjects();
   renderSources();
   renderSourceList();
 };
@@ -440,8 +456,8 @@ const searchEvidence = async () => {
       },
       body: JSON.stringify({
         query,
+        topic: topicFilter.value,
         subject: subjectFilter.value,
-        subSubject: subsubjectFilter.value,
         sourceId: sourceFilter.value
       })
     });
@@ -461,8 +477,8 @@ const searchEvidence = async () => {
     const analysis = analyzeQuestion(query);
     renderAnalysis(analysis);
     const matches = library.records
-      .filter((record) => !subjectFilter.value || record.subject === subjectFilter.value)
-      .filter((record) => !subsubjectFilter.value || normalizeOptionalText(record.subSubject) === subsubjectFilter.value)
+      .filter((record) => !topicFilter.value || record.topic === topicFilter.value)
+      .filter((record) => !subjectFilter.value || normalizeOptionalText(record.subject) === subjectFilter.value)
       .filter((record) => !sourceFilter.value || record.sourceRef === sourceFilter.value)
       .map((record) => scoreRecord(record, analysis))
       .filter(Boolean)
@@ -477,8 +493,8 @@ const searchEvidence = async () => {
         title: match.title,
         author: match.author,
         year: match.year,
+        topic: match.topic,
         subject: match.subject,
-        subSubject: match.subSubject,
         page: match.page,
         excerpt: match.excerpt
       }))
@@ -521,6 +537,25 @@ const refreshRepoDrop = async () => {
   renderRepoDrop(payload.files || []);
 };
 
+const refreshLibraryPdfs = async () => {
+  if (!localMode) return;
+  const response = await fetch("/api/library-pdfs", { cache: "no-store" });
+  const payload = await response.json();
+  libraryPdfList.innerHTML = "";
+  if (!(payload.files || []).length) {
+    libraryPdfList.innerHTML = '<div class="empty-state">All committed library PDFs are already indexed.</div>';
+    return;
+  }
+  (payload.files || []).slice(0, 10).forEach((file) => {
+    const fragment = listCardTemplate.content.cloneNode(true);
+    fragment.querySelector(".item-name").textContent = file.filename;
+    fragment.querySelector(".item-summary").textContent =
+      `${Math.max(1, Math.round(file.size / 1024 / 1024))} MB | committed library PDF`;
+    fragment.querySelector(".item-detail").textContent = "Ready to index from docs/library/pdfs";
+    libraryPdfList.append(fragment);
+  });
+};
+
 const detectLocalMode = async () => {
   try {
     const response = await fetch("/api/health", { cache: "no-store" });
@@ -535,12 +570,14 @@ const detectLocalMode = async () => {
     uploadForm.classList.remove("hidden");
     inboxForm.classList.remove("hidden");
     repoDropForm.classList.remove("hidden");
+    libraryPdfForm.classList.remove("hidden");
     uploadModeMessage.textContent =
-      "Local mode is active. Add a subject, optionally add a sub-subject, then upload directly, import from library-inbox/, or import developer PDFs from repo-pdf-drop/.";
+      "Local mode is active. Add a topic, optionally add a subject, then upload directly, import from library-inbox/, index committed library PDFs, or import developer PDFs from repo-pdf-drop/.";
   } else {
     uploadForm.classList.add("hidden");
     inboxForm.classList.add("hidden");
     repoDropForm.classList.add("hidden");
+    libraryPdfForm.classList.add("hidden");
     uploadModeMessage.textContent =
       "Shared GitHub mode is read-only. Run locally if you need to add books into the repo library.";
   }
@@ -571,7 +608,7 @@ const handleUpload = async (event) => {
   uploadStatus.textContent = `${payload.message}${skipped}`;
   uploadForm.reset();
   renderJobs(payload.jobs);
-  await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox(), refreshRepoDrop()]);
+  await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox(), refreshRepoDrop(), refreshLibraryPdfs()]);
 };
 
 const handleInboxImport = async (event) => {
@@ -584,8 +621,8 @@ const handleInboxImport = async (event) => {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
+      topic: document.querySelector("#upload-topic").value.trim(),
       subject: document.querySelector("#upload-subject").value.trim(),
-      subSubject: document.querySelector("#upload-subsubject").value.trim(),
       author: document.querySelector("#upload-author").value.trim(),
       year: document.querySelector("#upload-year").value.trim()
     })
@@ -598,7 +635,7 @@ const handleInboxImport = async (event) => {
   const skipped = payload.skipped?.length ? ` Skipped duplicates: ${payload.skipped.join(", ")}.` : "";
   uploadStatus.textContent = `${payload.message}${skipped}`;
   renderJobs(payload.jobs || []);
-  await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox(), refreshRepoDrop()]);
+  await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox(), refreshRepoDrop(), refreshLibraryPdfs()]);
 };
 
 const handleRepoDropImport = async (event) => {
@@ -611,8 +648,8 @@ const handleRepoDropImport = async (event) => {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
+      topic: document.querySelector("#upload-topic").value.trim(),
       subject: document.querySelector("#upload-subject").value.trim(),
-      subSubject: document.querySelector("#upload-subsubject").value.trim(),
       author: document.querySelector("#upload-author").value.trim(),
       year: document.querySelector("#upload-year").value.trim()
     })
@@ -625,7 +662,34 @@ const handleRepoDropImport = async (event) => {
   const skipped = payload.skipped?.length ? ` Skipped duplicates: ${payload.skipped.join(", ")}.` : "";
   uploadStatus.textContent = `${payload.message}${skipped}`;
   renderJobs(payload.jobs || []);
-  await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox(), refreshRepoDrop()]);
+  await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox(), refreshRepoDrop(), refreshLibraryPdfs()]);
+};
+
+const handleLibraryPdfImport = async (event) => {
+  event.preventDefault();
+  uploadStatus.textContent = "Indexing committed PDFs from docs/library/pdfs...";
+
+  const response = await fetch("/api/import-library-pdfs", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      topic: document.querySelector("#upload-topic").value.trim(),
+      subject: document.querySelector("#upload-subject").value.trim(),
+      author: document.querySelector("#upload-author").value.trim(),
+      year: document.querySelector("#upload-year").value.trim()
+    })
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || "Committed library import failed.");
+  }
+
+  const skipped = payload.skipped?.length ? ` Skipped duplicates: ${payload.skipped.join(", ")}.` : "";
+  uploadStatus.textContent = `${payload.message}${skipped}`;
+  renderJobs(payload.jobs || []);
+  await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox(), refreshRepoDrop(), refreshLibraryPdfs()]);
 };
 
 searchForm.addEventListener("submit", (event) => {
@@ -653,12 +717,27 @@ repoDropForm.addEventListener("submit", (event) => {
   });
 });
 
-subjectFilter.addEventListener("change", () => {
-  renderSubsubjects();
+libraryPdfForm.addEventListener("submit", (event) => {
+  handleLibraryPdfImport(event).catch((error) => {
+    uploadStatus.textContent = error.message;
+  });
+});
+
+topicFilter.addEventListener("change", () => {
+  renderSubjects();
   renderSources();
 });
 
-subsubjectFilter.addEventListener("change", () => {
+subjectFilter.addEventListener("change", () => {
+  renderSources();
+});
+
+topicSearch.addEventListener("input", () => {
+  renderTopics();
+});
+
+subjectSearch.addEventListener("input", () => {
+  renderSubjects();
   renderSources();
 });
 
@@ -681,7 +760,7 @@ Promise.all([detectLocalMode(), fetchLibrary()])
       answer: "The answer panel will respond only from the committed PDF evidence library.",
       usedCitations: []
     });
-    return Promise.all([refreshJobs(), refreshInbox(), refreshRepoDrop()]);
+    return Promise.all([refreshJobs(), refreshInbox(), refreshRepoDrop(), refreshLibraryPdfs()]);
   })
   .catch((error) => {
     statusMessage.textContent = error.message;

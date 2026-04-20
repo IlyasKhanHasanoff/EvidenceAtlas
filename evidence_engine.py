@@ -135,8 +135,8 @@ def score_record(record, analysis):
     full_text = " ".join([
         record.get("title", ""),
         record.get("author", ""),
+        record.get("topic", ""),
         record.get("subject", ""),
-        record.get("subSubject", "") or "",
         record.get("excerpt", ""),
         " ".join(record.get("keywords", [])),
     ])
@@ -159,8 +159,8 @@ def score_record(record, analysis):
     title_text = " ".join([
         record.get("title", ""),
         record.get("author", ""),
+        record.get("topic", ""),
         record.get("subject", ""),
-        record.get("subSubject", "") or "",
     ]).lower()
     title_focus_hits = [term for term in analysis["focusTerms"] if term in title_text]
 
@@ -192,14 +192,14 @@ def score_record(record, analysis):
     return enriched
 
 
-def search_library(library, query, subject="", sub_subject="", source_id=""):
+def search_library(library, query, topic="", subject="", source_id=""):
     analysis = analyze_question(query)
     matches = []
 
     for record in library.get("records", []):
-        if subject and record.get("subject") != subject:
+        if topic and record.get("topic") != topic:
             continue
-        if sub_subject and (record.get("subSubject") or "") != sub_subject:
+        if subject and record.get("subject") != subject:
             continue
         if source_id and record.get("sourceRef") != source_id:
             continue
@@ -221,8 +221,8 @@ def build_citations(matches):
             "title": match.get("title"),
             "author": match.get("author"),
             "year": match.get("year"),
+            "topic": match.get("topic"),
             "subject": match.get("subject"),
-            "subSubject": match.get("subSubject"),
             "page": match.get("page"),
             "excerpt": match.get("excerpt"),
             "pdfPath": match.get("pdfPath"),
@@ -261,7 +261,7 @@ def call_openai_answer(question, citations):
     for citation in citations:
         evidence_lines.append(
             f"[{citation['marker']}] {citation['title']} | {citation['author']} | {citation['year']} | "
-            f"Subject: {citation['subject']} | Sub-subject: {citation.get('subSubject') or 'None'} | "
+            f"Topic: {citation.get('topic') or 'None'} | Subject: {citation.get('subject') or 'None'} | "
             f"Page {citation['page']} | Excerpt: {citation['excerpt']}"
         )
 
@@ -318,9 +318,9 @@ def call_openai_answer(question, citations):
     }
 
 
-def answer_question(question, subject="", sub_subject="", source_id=""):
+def answer_question(question, topic="", subject="", source_id=""):
     library = load_library()
-    analysis, matches = search_library(library, question, subject=subject, sub_subject=sub_subject, source_id=source_id)
+    analysis, matches = search_library(library, question, topic=topic, subject=subject, source_id=source_id)
     citations = build_citations(matches)
     answer = call_openai_answer(question, citations)
 
