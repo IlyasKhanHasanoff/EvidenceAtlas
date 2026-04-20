@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evidence Atlas</title>
+  <meta name="theme-color" content="#9d3c24">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Repo-Backed Evidence App</p>
+        <h1>Search a shared library of cited evidence.</h1>
+        <p class="hero-text">
+          This app reads a repo-committed evidence library. Anyone with the link can search the same indexed books.
+          New PDFs only need to be added when the library does not already contain the source.
+        </p>
+      </div>
+
+      <aside class="hero-card">
+        <p class="card-label">How It Works</p>
+        <ul class="rules-list">
+          <li>All shared evidence lives in the repo library</li>
+          <li>Search returns excerpts, pages, and sources only</li>
+          <li>Quoted phrases are treated as exact constraints</li>
+          <li>Local mode can add new books into the repo</li>
+        </ul>
+      </aside>
+    </header>
+
+    <main class="workspace">
+      <section class="panel search-panel">
+        <form id="search-form" class="search-form">
+          <label class="field">
+            <span>Question</span>
+            <textarea
+              id="query"
+              rows="4"
+              placeholder='Example: What evidence is there about sanitation reform in industrial cities? Use quotes only when you want an exact phrase, like "dark rooms".'
+            ></textarea>
+          </label>
+
+          <div class="search-row">
+            <label class="field">
+              <span>Subject</span>
+              <select id="subject-filter">
+                <option value="">All subjects</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Source</span>
+              <select id="source-filter">
+                <option value="">All sources</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button type="submit" class="primary-button">Search evidence</button>
+            <button type="button" id="load-example" class="secondary-button">Load example</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel status-panel">
+        <div>
+          <p class="card-label">Library Status</p>
+          <h2>One repo-backed library for both local and shared use.</h2>
+        </div>
+        <p id="status-message" class="status-message">
+          The app is loading the committed library index.
+        </p>
+        <div id="stats" class="stats-grid"></div>
+        <div id="analysis-summary" class="analysis-summary"></div>
+      </section>
+
+      <section class="panel upload-panel" id="upload-panel">
+        <div>
+          <p class="card-label">Add Books</p>
+          <h2>Local mode can add PDFs directly into the repo library.</h2>
+        </div>
+        <p id="upload-mode-message" class="status-message">
+          Shared GitHub mode is read-only. Run locally to add new books into the repo.
+        </p>
+
+        <form id="upload-form" class="upload-form hidden">
+          <div class="search-row">
+            <label class="field">
+              <span>Subject tag</span>
+              <input id="upload-subject" name="subject" type="text" placeholder="Example: Public Health">
+            </label>
+
+            <label class="field">
+              <span>Author override</span>
+              <input id="upload-author" name="author" type="text" placeholder="Optional">
+            </label>
+          </div>
+
+          <div class="search-row">
+            <label class="field">
+              <span>Year override</span>
+              <input id="upload-year" name="year" type="text" placeholder="Optional">
+            </label>
+
+            <label class="field upload-dropzone" for="pdf-files">
+              <span>PDF files</span>
+              <input id="pdf-files" name="pdfs" type="file" accept="application/pdf" multiple>
+              <strong>Choose one or more PDFs</strong>
+              <small>Local mode copies them into `docs/library/pdfs/` and rebuilds the shared index.</small>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button type="submit" class="primary-button">Add books to repo library</button>
+          </div>
+        </form>
+
+        <form id="inbox-form" class="upload-form hidden">
+          <div class="search-row">
+            <div class="field">
+              <span>Large-book inbox</span>
+              <p class="field-note">
+                For large PDFs, copy files into <code>library-inbox/</code> in the repo folder, then import them here.
+              </p>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button type="submit" class="secondary-button">Import inbox PDFs</button>
+          </div>
+        </form>
+
+        <div class="upload-meta">
+          <p id="upload-status" class="status-message">No library updates running.</p>
+          <div id="inbox-list" class="upload-list"></div>
+          <div id="job-list" class="upload-list"></div>
+          <div id="source-list" class="upload-list"></div>
+        </div>
+      </section>
+
+      <section class="panel results-panel">
+        <div class="results-header">
+          <div>
+            <p class="card-label">Results</p>
+            <h2>Exact excerpts from the committed library</h2>
+          </div>
+          <p id="result-count" class="result-count">0 matches</p>
+        </div>
+        <div id="results" class="results-list" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <template id="result-template">
+    <article class="result-card">
+      <div class="result-topline">
+        <span class="subject-pill"></span>
+        <div class="result-badges">
+          <span class="phrase-pill"></span>
+          <span class="concept-pill"></span>
+          <span class="score-pill"></span>
+        </div>
+      </div>
+      <h3 class="result-title"></h3>
+      <p class="result-meta"></p>
+      <blockquote class="excerpt"></blockquote>
+      <div class="match-section">
+        <p class="match-label">Matched evidence</p>
+        <div class="match-tags"></div>
+      </div>
+      <p class="result-link"></p>
+    </article>
+  </template>
+
+  <template id="list-card-template">
+    <article class="upload-item">
+      <strong class="item-name"></strong>
+      <span class="item-summary"></span>
+      <span class="item-detail"></span>
+    </article>
+  </template>
+
+  <script src="./app.js" type="module"></script>
+</body>
+</html>

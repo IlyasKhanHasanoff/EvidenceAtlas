@@ -1,74 +1,65 @@
 # Evidence Atlas
 
-Evidence Atlas is a retrieval-only evidence finder for scanned books. It stores uploaded PDFs, indexes excerpt records into a local SQLite database, and only returns exact cited passages with source metadata.
+Evidence Atlas is now a repo-backed app rather than only a local website. The same committed library files power:
 
-## What it does
+- local app mode, where you can add new PDFs into the repo
+- GitHub Pages mode, where anyone with the link can open and search the shared library without uploading anything
 
-- Accepts a user question or subject query.
-- Searches a persistent local evidence database instead of an in-memory browser array.
-- Accepts PDF uploads through the web UI and stores them on the server.
-- Extracts page text from text-based PDFs and creates page-level excerpt records.
-- Marks image-only scans as `needs_ocr` instead of pretending they were searchable.
-- Analyzes the user’s question into focus terms and concepts before searching.
-- Uses quoted words or phrases as exact constraints only when the user includes quotation marks.
-- Supports source-specific filtering for tighter citation lookup.
-- Returns exact excerpts, page numbers, source IDs, and metadata.
-- Avoids generative answers, summaries, and suggestions.
+## Core model
 
-## Project structure
+- Shared library data lives in [docs/library/index.json](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\library\index.json)
+- Shared PDFs live in [docs/library/pdfs](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\library\pdfs)
+- Large local import staging lives in [library-inbox](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\library-inbox)
+- The app UI lives in [docs/index.html](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\index.html), [docs/app.js](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\app.js), and [docs/styles.css](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\styles.css)
+- Local mode uses [server.py](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\server.py) only to add books into that repo library and serve the app locally
 
-- `server.py` starts the local HTTP server and API.
-- `public/` contains the retrieval-only client UI.
-- `data/books.json` seeds the database on first run.
-- `uploads/` is created at runtime for stored PDFs.
+## What changed
+
+- Search is now client-side against the committed library index, so GitHub Pages can serve it.
+- Anyone with the app link can open the shared library immediately with no upload step.
+- Local uploads are copied into the repo library folder so they become part of the shared project content.
+- Large PDFs can be dropped into `library-inbox/` and imported without pushing the whole file through the browser.
+- Quoted words or phrases are treated as exact constraints; everything else uses question-analysis-based retrieval.
+- The app is installable as a lightweight PWA via the web manifest and service worker.
 
 ## Run locally
 
 Run [run-local.bat](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\run-local.bat) or [run-local.ps1](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\run-local.ps1).
 
-What it does automatically:
+That will:
 
-- Creates `.venv` on first run.
-- Installs or refreshes requirements only when `requirements.txt` changes.
-- Starts the local server if it is not already running.
-- Opens `http://127.0.0.1:3000` in your browser.
+- create `.venv` on first run
+- install or refresh requirements when needed
+- start the local companion server
+- open `http://127.0.0.1:3000`
+- let you install the app shell from the browser as a desktop-style app if you want
 
-To enable OpenAI semantic reranking, add an `.env` file in the project root with:
+To stop the local companion server, run [stop-local.ps1](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\stop-local.ps1).
 
-```env
-OPENAI_API_KEY=your_api_key_here
-```
+## Use on GitHub
 
-To stop the local background server, run [stop-local.ps1](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\stop-local.ps1).
+Set GitHub Pages to publish from the `docs/` folder on `main`.
 
-## Search behavior
+Once that is enabled:
 
-- Search is based on question analysis, concept phrases, focus terms, and contextual relevance.
-- Quoted words or phrases are treated as exact requirements.
-- When `OPENAI_API_KEY` is configured, OpenAI embeddings rerank the candidate excerpts semantically.
-- Results are ranked by quoted phrase hits, concept hits, focus-term hits, and page position.
-- Every result is shown as an exact excerpt with citation metadata.
-- The UI does not generate narrative answers.
+- the app loads from `docs/`
+- the shared library loads from `docs/library/index.json`
+- committed PDFs in `docs/library/pdfs/` are available to every visitor
 
 ## Upload behavior
 
-1. Choose one or more PDF files in the upload panel.
-2. Optionally provide subject, author, or year overrides.
-3. The server stores each PDF in `uploads/`.
-4. Ingestion runs in the background, so large book PDFs can keep processing while you continue using the site.
-5. Text-based PDFs are parsed into excerpt records and written to the database.
-6. PDFs without extractable text are saved and flagged as `needs_ocr`.
+- In local mode, the upload panel is enabled.
+- Browser uploads copy PDFs into `docs/library/pdfs/`.
+- Large books can be copied into `library-inbox/` first, then imported from the app with one button.
+- A background job extracts excerpts and updates `docs/library/index.json`.
+- Duplicate original filenames are skipped so the same book is not imported repeatedly.
+- After that, commit and push the changed library files so GitHub visitors get the new books too.
 
-## Important limitation
+## Important constraint
 
-- This version has honest OCR handling, not fake OCR.
-- Text-layer PDFs work immediately.
-- Image-only scanned PDFs are persisted and clearly marked for OCR follow-up.
-- Full OCR for image-only scans is the next upgrade path.
+GitHub Pages is static. That means public visitors cannot persist new uploads directly into the repo without an authenticated backend workflow. The supported flow is:
 
-## Good next upgrades
-
-- Add Tesseract-based OCR for image-only scanned PDFs.
-- Add exact phrase search and boolean operators.
-- Add scanned-page image previews alongside excerpt citations.
-- Add authentication and per-library collections.
+1. Run the app locally
+2. Add missing books
+3. Commit and push the updated repo library
+4. Everyone else sees the new sources through the shared link

@@ -1,0 +1,9 @@
+{
+  "name": "Evidence Atlas",
+  "short_name": "Evidence Atlas",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4efe6",
+  "theme_color": "#9d3c24",
+  "description": "Repo-backed citation and evidence search app."
+}

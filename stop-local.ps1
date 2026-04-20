@@ -8,21 +8,21 @@ if (-not (Test-Path $pidFile)) {
   exit 0
 }
 
-$pid = (Get-Content $pidFile -Raw).Trim()
+$serverPid = (Get-Content $pidFile -Raw).Trim()
 
-if (-not $pid) {
+if (-not $serverPid) {
   Remove-Item -LiteralPath $pidFile -ErrorAction SilentlyContinue
   Write-Host "PID file was empty."
   exit 0
 }
 
-$process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+$process = Get-Process -Id $serverPid -ErrorAction SilentlyContinue
 
 if ($process) {
-  Stop-Process -Id $pid
-  Write-Host "Stopped Evidence Atlas server process $pid."
+  Stop-Process -Id $serverPid
+  Write-Host "Stopped Evidence Atlas server process $serverPid."
 } else {
-  Write-Host "No running server process was found for PID $pid."
+  Write-Host "No running server process was found for PID $serverPid."
 }
 
 Remove-Item -LiteralPath $pidFile -ErrorAction SilentlyContinue

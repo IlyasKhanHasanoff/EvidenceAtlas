@@ -1,0 +1,235 @@
+{
+  "generatedAt": "2026-04-20T16:54:41.363636",
+  "sources": [
+    {
+      "sourceId": "SEED-THE-SANITARY-CONDITION-OF-THE-LABOURING-POPULATION",
+      "title": "The Sanitary Condition of the Labouring Population",
+      "author": "Edwin Chadwick",
+      "year": "1842",
+      "subject": "Public Health",
+      "pdfPath": null,
+      "originalFilename": null,
+      "ingestionStatus": "seeded",
+      "excerptCount": 2
+    },
+    {
+      "sourceId": "SEED-HOW-THE-OTHER-HALF-LIVES",
+      "title": "How the Other Half Lives",
+      "author": "Jacob A. Riis",
+      "year": "1890",
+      "subject": "Urban Poverty",
+      "pdfPath": null,
+      "originalFilename": null,
+      "ingestionStatus": "seeded",
+      "excerptCount": 2
+    },
+    {
+      "sourceId": "SEED-THE-HISTORY-OF-THE-STANDARD-OIL-COMPANY",
+      "title": "The History of the Standard Oil Company",
+      "author": "Ida M. Tarbell",
+      "year": "1904",
+      "subject": "Industrial History",
+      "pdfPath": null,
+      "originalFilename": null,
+      "ingestionStatus": "seeded",
+      "excerptCount": 1
+    },
+    {
+      "sourceId": "SEED-NARRATIVE-OF-THE-LIFE-OF-FREDERICK-DOUGLASS",
+      "title": "Narrative of the Life of Frederick Douglass",
+      "author": "Frederick Douglass",
+      "year": "1845",
+      "subject": "Abolition",
+      "pdfPath": null,
+      "originalFilename": null,
+      "ingestionStatus": "seeded",
+      "excerptCount": 1
+    },
+    {
+      "sourceId": "SEED-THE-SOULS-OF-BLACK-FOLK",
+      "title": "The Souls of Black Folk",
+      "author": "W. E. B. Du Bois",
+      "year": "1903",
+      "subject": "Sociology",
+      "pdfPath": null,
+      "originalFilename": null,
+      "ingestionStatus": "seeded",
+      "excerptCount": 1
+    },
+    {
+      "sourceId": "SEED-THE-JUNGLE",
+      "title": "The Jungle",
+      "author": "Upton Sinclair",
+      "year": "1906",
+      "subject": "Food Safety",
+      "pdfPath": null,
+      "originalFilename": null,
+      "ingestionStatus": "seeded",
+      "excerptCount": 2
+    }
+  ],
+  "records": [
+    {
+      "sourceId": "BK-001-P041",
+      "sourceRef": "SEED-THE-SANITARY-CONDITION-OF-THE-LABOURING-POPULATION",
+      "title": "The Sanitary Condition of the Labouring Population",
+      "author": "Edwin Chadwick",
+      "year": "1842",
+      "subject": "Public Health",
+      "page": 41,
+      "excerpt": "The annual loss of life from filth and bad ventilation are greater than the loss from death or wounds in any wars in which the country has been engaged in modern times.",
+      "keywords": [
+        "sanitation",
+        "drainage",
+        "urban reform",
+        "mortality"
+      ],
+      "pdfPath": null,
+      "originalFilename": null
+    },
+    {
+      "sourceId": "BK-001-P118",
+      "sourceRef": "SEED-THE-SANITARY-CONDITION-OF-THE-LABOURING-POPULATION",
+      "title": "The Sanitary Condition of the Labouring Population",
+      "author": "Edwin Chadwick",
+      "year": "1842",
+      "subject": "Public Health",
+      "page": 118,
+      "excerpt": "The primary and most important measures, and at the same time the most practicable, and within the recognised province of public administration, are drainage, the removal of all refuse of habitations, streets, and roads, and the improvement of the supplies of water.",
+      "keywords": [
+        "drainage",
+        "city",
+        "sewers",
+        "disease"
+      ],
+      "pdfPath": null,
+      "originalFilename": null
+    },
+    {
+      "sourceId": "BK-002-P067",
+      "sourceRef": "SEED-HOW-THE-OTHER-HALF-LIVES",
+      "title": "How the Other Half Lives",
+      "author": "Jacob A. Riis",
+      "year": "1890",
+      "subject": "Urban Poverty",
+      "page": 67,
+      "excerpt": "The foul core of New York's slums was the tenement; its crowded rooms and unclean courts bred both disease and the despair that accompanied it.",
+      "keywords": [
+        "tenements",
+        "crowding",
+        "sanitation",
+        "cities"
+      ],
+      "pdfPath": null,
+      "originalFilename": null
+    },
+    {
+      "sourceId": "BK-002-P132",
+      "sourceRef": "SEED-HOW-THE-OTHER-HALF-LIVES",
+      "title": "How the Other Half Lives",
+      "author": "Jacob A. Riis",
+      "year": "1890",
+      "subject": "Urban Poverty",
+      "page": 132,
+      "excerpt": "With the opening of dark rooms to light and air, with stricter inspection, and with better yard drainage, the whole aspect of the block was changed.",
+      "keywords": [
+        "reform",
+        "inspection",
+        "health",
+        "housing"
+      ],
+      "pdfPath": null,
+      "originalFilename": null
+    },
+    {
+      "sourceId": "BK-003-P212",
+      "sourceRef": "SEED-THE-HISTORY-OF-THE-STANDARD-OIL-COMPANY",
+      "title": "The History of the Standard Oil Company",
+      "author": "Ida M. Tarbell",
+      "year": "1904",
+      "subject": "Industrial History",
+      "page": 212,
+      "excerpt": "There is no more important single factor in the growth of the Standard Oil Company than the secret rebate from the railroads.",
+      "keywords": [
+        "railroad",
+        "rebates",
+        "evidence",
+        "competition"
+      ],
+      "pdfPath": null,
+      "originalFilename": null
+    },
+    {
+      "sourceId": "BK-004-P089",
+      "sourceRef": "SEED-NARRATIVE-OF-THE-LIFE-OF-FREDERICK-DOUGLASS",
+      "title": "Narrative of the Life of Frederick Douglass",
+      "author": "Frederick Douglass",
+      "year": "1845",
+      "subject": "Abolition",
+      "page": 89,
+      "excerpt": "From that moment, I understood the pathway from slavery to freedom. It was just what I wanted, and I got it at a time when I the least expected it.",
+      "keywords": [
+        "education",
+        "slavery",
+        "evidence",
+        "freedom"
+      ],
+      "pdfPath": null,
+      "originalFilename": null
+    },
+    {
+      "sourceId": "BK-005-P154",
+      "sourceRef": "SEED-THE-SOULS-OF-BLACK-FOLK",
+      "title": "The Souls of Black Folk",
+      "author": "W. E. B. Du Bois",
+      "year": "1903",
+      "subject": "Sociology",
+      "page": 154,
+      "excerpt": "Men we shall have only as we make manhood the object of the work of the schools, intelligence, broad sympathy, knowledge of the world that was and is, and of the relation of men to it.",
+      "keywords": [
+        "education",
+        "reconstruction",
+        "evidence",
+        "history"
+      ],
+      "pdfPath": null,
+      "originalFilename": null
+    },
+    {
+      "sourceId": "BK-006-P023",
+      "sourceRef": "SEED-THE-JUNGLE",
+      "title": "The Jungle",
+      "author": "Upton Sinclair",
+      "year": "1906",
+      "subject": "Food Safety",
+      "page": 23,
+      "excerpt": "There would be meat stored in great piles in rooms; and the water from leaky roofs would drip over it, and thousands of rats would race about on it.",
+      "keywords": [
+        "meatpacking",
+        "inspection",
+        "filth",
+        "reform"
+      ],
+      "pdfPath": null,
+      "originalFilename": null
+    },
+    {
+      "sourceId": "BK-006-P271",
+      "sourceRef": "SEED-THE-JUNGLE",
+      "title": "The Jungle",
+      "author": "Upton Sinclair",
+      "year": "1906",
+      "subject": "Food Safety",
+      "page": 271,
+      "excerpt": "The public, once aroused to the facts, demanded that the old careless methods be replaced by inspection responsible to the nation.",
+      "keywords": [
+        "federal response",
+        "inspection",
+        "reform",
+        "law"
+      ],
+      "pdfPath": null,
+      "originalFilename": null
+    }
+  ]
+}
