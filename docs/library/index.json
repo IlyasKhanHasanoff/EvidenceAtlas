@@ -10,7 +10,8 @@
       "pdfPath": null,
       "originalFilename": null,
       "ingestionStatus": "seeded",
-      "excerptCount": 2
+      "excerptCount": 2,
+      "subSubject": null
     },
     {
       "sourceId": "SEED-HOW-THE-OTHER-HALF-LIVES",
@@ -21,7 +22,8 @@
       "pdfPath": null,
       "originalFilename": null,
       "ingestionStatus": "seeded",
-      "excerptCount": 2
+      "excerptCount": 2,
+      "subSubject": null
     },
     {
       "sourceId": "SEED-THE-HISTORY-OF-THE-STANDARD-OIL-COMPANY",
@@ -32,7 +34,8 @@
       "pdfPath": null,
       "originalFilename": null,
       "ingestionStatus": "seeded",
-      "excerptCount": 1
+      "excerptCount": 1,
+      "subSubject": null
     },
     {
       "sourceId": "SEED-NARRATIVE-OF-THE-LIFE-OF-FREDERICK-DOUGLASS",
@@ -43,7 +46,8 @@
       "pdfPath": null,
       "originalFilename": null,
       "ingestionStatus": "seeded",
-      "excerptCount": 1
+      "excerptCount": 1,
+      "subSubject": null
     },
     {
       "sourceId": "SEED-THE-SOULS-OF-BLACK-FOLK",
@@ -54,7 +58,8 @@
       "pdfPath": null,
       "originalFilename": null,
       "ingestionStatus": "seeded",
-      "excerptCount": 1
+      "excerptCount": 1,
+      "subSubject": null
     },
     {
       "sourceId": "SEED-THE-JUNGLE",
@@ -65,7 +70,8 @@
       "pdfPath": null,
       "originalFilename": null,
       "ingestionStatus": "seeded",
-      "excerptCount": 2
+      "excerptCount": 2,
+      "subSubject": null
     }
   ],
   "records": [
@@ -85,7 +91,8 @@
         "mortality"
       ],
       "pdfPath": null,
-      "originalFilename": null
+      "originalFilename": null,
+      "subSubject": null
     },
     {
       "sourceId": "BK-001-P118",
@@ -103,7 +110,8 @@
         "disease"
       ],
       "pdfPath": null,
-      "originalFilename": null
+      "originalFilename": null,
+      "subSubject": null
     },
     {
       "sourceId": "BK-002-P067",
@@ -121,7 +129,8 @@
         "cities"
       ],
       "pdfPath": null,
-      "originalFilename": null
+      "originalFilename": null,
+      "subSubject": null
     },
     {
       "sourceId": "BK-002-P132",
@@ -139,7 +148,8 @@
         "housing"
       ],
       "pdfPath": null,
-      "originalFilename": null
+      "originalFilename": null,
+      "subSubject": null
     },
     {
       "sourceId": "BK-003-P212",
@@ -157,7 +167,8 @@
         "competition"
       ],
       "pdfPath": null,
-      "originalFilename": null
+      "originalFilename": null,
+      "subSubject": null
     },
     {
       "sourceId": "BK-004-P089",
@@ -175,7 +186,8 @@
         "freedom"
       ],
       "pdfPath": null,
-      "originalFilename": null
+      "originalFilename": null,
+      "subSubject": null
     },
     {
       "sourceId": "BK-005-P154",
@@ -193,7 +205,8 @@
         "history"
       ],
       "pdfPath": null,
-      "originalFilename": null
+      "originalFilename": null,
+      "subSubject": null
     },
     {
       "sourceId": "BK-006-P023",
@@ -211,7 +224,8 @@
         "reform"
       ],
       "pdfPath": null,
-      "originalFilename": null
+      "originalFilename": null,
+      "subSubject": null
     },
     {
       "sourceId": "BK-006-P271",
@@ -229,7 +243,8 @@
         "law"
       ],
       "pdfPath": null,
-      "originalFilename": null
+      "originalFilename": null,
+      "subSubject": null
     }
   ]
 }

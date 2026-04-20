@@ -18,6 +18,7 @@ DOCS_DIR = ROOT / "docs"
 LIBRARY_DIR = DOCS_DIR / "library"
 PDFS_DIR = LIBRARY_DIR / "pdfs"
 INBOX_DIR = ROOT / "library-inbox"
+REPO_DROP_DIR = ROOT / "repo-pdf-drop"
 INDEX_PATH = LIBRARY_DIR / "index.json"
 SAMPLE_PATH = ROOT / "data" / "books.json"
 
@@ -107,8 +108,10 @@ def ensure_library_index():
     LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
     PDFS_DIR.mkdir(parents=True, exist_ok=True)
     INBOX_DIR.mkdir(parents=True, exist_ok=True)
+    REPO_DROP_DIR.mkdir(parents=True, exist_ok=True)
 
     if INDEX_PATH.exists():
+        migrate_library_schema()
         return
 
     payload = json.loads(SAMPLE_PATH.read_text(encoding="utf-8"))
@@ -124,6 +127,7 @@ def ensure_library_index():
                 "author": record["author"],
                 "year": str(record["year"]),
                 "subject": record["subject"],
+                "subSubject": record.get("subSubject"),
                 "pdfPath": None,
                 "originalFilename": None,
                 "ingestionStatus": "seeded",
@@ -139,6 +143,7 @@ def ensure_library_index():
                 "author": record["author"],
                 "year": str(record["year"]),
                 "subject": record["subject"],
+                "subSubject": record.get("subSubject"),
                 "page": int(record["page"]),
                 "excerpt": record["excerpt"],
                 "keywords": record.get("keywords", []),
@@ -153,6 +158,30 @@ def ensure_library_index():
         "records": records,
     }
     INDEX_PATH.write_text(json.dumps(library, indent=2), encoding="utf-8")
+
+
+def migrate_library_schema():
+    library = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+    changed = False
+
+    for source in library.get("sources", []):
+        if "subSubject" not in source:
+            source["subSubject"] = None
+            changed = True
+        if "originalFilename" not in source:
+            source["originalFilename"] = None
+            changed = True
+
+    for record in library.get("records", []):
+        if "subSubject" not in record:
+            record["subSubject"] = None
+            changed = True
+        if "originalFilename" not in record:
+            record["originalFilename"] = None
+            changed = True
+
+    if changed:
+        INDEX_PATH.write_text(json.dumps(library, indent=2), encoding="utf-8")
 
 
 def load_library():
@@ -175,7 +204,7 @@ def existing_original_filenames(library) -> set[str]:
     }
 
 
-def list_inbox_files():
+def list_pdf_files(directory: Path):
     ensure_library_index()
     return sorted(
         [
@@ -184,19 +213,20 @@ def list_inbox_files():
                 "size": path.stat().st_size,
                 "modifiedAt": datetime.utcfromtimestamp(path.stat().st_mtime).isoformat(),
             }
-            for path in INBOX_DIR.iterdir()
+            for path in directory.iterdir()
             if path.is_file() and path.suffix.lower() == ".pdf"
         ],
         key=lambda item: item["filename"].lower(),
     )
 
 
-def create_job(filename: str, subject: str):
+def create_job(filename: str, subject: str, sub_subject: str):
     job_id = uuid.uuid4().hex
     job = {
         "jobId": job_id,
         "filename": filename,
         "subject": subject or "Uploaded Evidence",
+        "subSubject": sub_subject or None,
         "status": "queued",
         "createdAt": datetime.utcnow().isoformat(),
         "pageCount": 0,
@@ -240,10 +270,19 @@ def upsert_source_and_records(source, records):
     save_library(library)
 
 
-def ingest_pdf_into_library(file_path: Path, original_name: str, subject: str, author: str, year: str, progress_callback=None):
+def ingest_pdf_into_library(
+    file_path: Path,
+    original_name: str,
+    subject: str,
+    sub_subject: str,
+    author: str,
+    year: str,
+    progress_callback=None,
+):
     reader = PdfReader(str(file_path))
     title = re.sub(r"\.pdf$", "", original_name, flags=re.IGNORECASE)
     normalized_subject = subject or "Uploaded Evidence"
+    normalized_sub_subject = sub_subject or None
     normalized_author = author or "Unknown / Uploaded PDF"
     normalized_year = year or str(datetime.utcnow().year)
     source_id = f"SRC-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
@@ -265,6 +304,7 @@ def ingest_pdf_into_library(file_path: Path, original_name: str, subject: str, a
                     "author": normalized_author,
                     "year": normalized_year,
                     "subject": normalized_subject,
+                    "subSubject": normalized_sub_subject,
                     "page": page_number,
                     "excerpt": chunk,
                     "keywords": derive_keywords(chunk),
@@ -282,6 +322,7 @@ def ingest_pdf_into_library(file_path: Path, original_name: str, subject: str, a
         "author": normalized_author,
         "year": normalized_year,
         "subject": normalized_subject,
+        "subSubject": normalized_sub_subject,
         "pdfPath": f"./library/pdfs/{file_path.name}",
         "originalFilename": original_name,
         "ingestionStatus": ingestion_status,
@@ -297,6 +338,7 @@ def ingest_pdf_into_library(file_path: Path, original_name: str, subject: str, a
         "sourceId": source_id,
         "title": title,
         "subject": normalized_subject,
+        "subSubject": normalized_sub_subject,
         "author": normalized_author,
         "year": normalized_year,
         "pageCount": total_pages,
@@ -305,7 +347,7 @@ def ingest_pdf_into_library(file_path: Path, original_name: str, subject: str, a
     }
 
 
-def process_job(job_id: str, file_path: Path, original_name: str, subject: str, author: str, year: str):
+def process_job(job_id: str, file_path: Path, original_name: str, subject: str, sub_subject: str, author: str, year: str):
     try:
         update_job(job_id, status="processing", ingestionStatus="processing")
 
@@ -319,7 +361,7 @@ def process_job(job_id: str, file_path: Path, original_name: str, subject: str, 
                 excerptCount=excerpt_count,
             )
 
-        result = ingest_pdf_into_library(file_path, original_name, subject, author, year, progress_callback)
+        result = ingest_pdf_into_library(file_path, original_name, subject, sub_subject, author, year, progress_callback)
         update_job(
             job_id,
             status="completed",
@@ -333,11 +375,11 @@ def process_job(job_id: str, file_path: Path, original_name: str, subject: str, 
         update_job(job_id, status="failed", ingestionStatus="failed", error=str(error))
 
 
-def queue_file_for_ingestion(file_path: Path, original_name: str, subject: str, author: str, year: str):
-    job = create_job(original_name, subject)
+def queue_file_for_ingestion(file_path: Path, original_name: str, subject: str, sub_subject: str, author: str, year: str):
+    job = create_job(original_name, subject, sub_subject)
     worker = threading.Thread(
         target=process_job,
-        args=(job["jobId"], file_path, original_name, subject, author, year),
+        args=(job["jobId"], file_path, original_name, subject, sub_subject, author, year),
         daemon=True,
     )
     worker.start()
@@ -389,7 +431,11 @@ class AppHandler(BaseHTTPRequestHandler):
             return
 
         if path_name == "/api/inbox":
-            self._send_json({"files": list_inbox_files()})
+            self._send_json({"files": list_pdf_files(INBOX_DIR)})
+            return
+
+        if path_name == "/api/repo-drop":
+            self._send_json({"files": list_pdf_files(REPO_DROP_DIR)})
             return
 
         if path_name.startswith("/api/jobs/"):
@@ -411,12 +457,13 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         if parsed.path != "/api/upload":
-            if parsed.path != "/api/import-inbox":
+            if parsed.path not in {"/api/import-inbox", "/api/import-repo-drop"}:
                 self.send_error(HTTPStatus.NOT_FOUND, "Route not found")
                 return
 
             fields = parse_json_body(self)
             subject = fields.get("subject", "").strip()
+            sub_subject = fields.get("subSubject", "").strip()
             author = fields.get("author", "").strip()
             year = fields.get("year", "").strip()
             library = load_library()
@@ -424,7 +471,11 @@ class AppHandler(BaseHTTPRequestHandler):
             jobs = []
             skipped = []
 
-            for inbox_file in INBOX_DIR.iterdir():
+            is_inbox_import = parsed.path == "/api/import-inbox"
+            source_directory = INBOX_DIR if is_inbox_import else REPO_DROP_DIR
+            source_label = "Inbox PDFs" if is_inbox_import else "Repo drop PDFs"
+
+            for inbox_file in source_directory.iterdir():
                 if not inbox_file.is_file() or inbox_file.suffix.lower() != ".pdf":
                     continue
                 original_name = safe_filename(inbox_file.name)
@@ -433,8 +484,11 @@ class AppHandler(BaseHTTPRequestHandler):
                     continue
 
                 destination = PDFS_DIR / f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{original_name}"
-                inbox_file.replace(destination)
-                jobs.append(queue_file_for_ingestion(destination, original_name, subject, author, year))
+                if is_inbox_import:
+                    inbox_file.replace(destination)
+                else:
+                    destination.write_bytes(inbox_file.read_bytes())
+                jobs.append(queue_file_for_ingestion(destination, original_name, subject, sub_subject, author, year))
                 known_files.add(original_name.lower())
 
             self._send_json(
@@ -442,8 +496,8 @@ class AppHandler(BaseHTTPRequestHandler):
                     "jobs": jobs,
                     "skipped": skipped,
                     "library": load_library(),
-                    "message": "Inbox PDFs were copied into the repo library and queued for indexing."
-                    if jobs else "No new inbox PDFs were queued."
+                    "message": f"{source_label} were copied into the repo library and queued for indexing."
+                    if jobs else f"No new files were queued from {source_label.lower()}."
                 },
                 status=HTTPStatus.ACCEPTED,
             )
@@ -459,6 +513,7 @@ class AppHandler(BaseHTTPRequestHandler):
             return
 
         subject = fields.get("subject", "").strip()
+        sub_subject = fields.get("subSubject", "").strip()
         author = fields.get("author", "").strip()
         year = fields.get("year", "").strip()
         library = load_library()
@@ -473,7 +528,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 continue
             destination = PDFS_DIR / f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{original_name}"
             destination.write_bytes(item["content"])
-            jobs.append(queue_file_for_ingestion(destination, original_name, subject, author, year))
+            jobs.append(queue_file_for_ingestion(destination, original_name, subject, sub_subject, author, year))
             known_files.add(original_name.lower())
 
         self._send_json(

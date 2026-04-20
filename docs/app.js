@@ -1,5 +1,6 @@
 const queryInput = document.querySelector("#query");
 const subjectFilter = document.querySelector("#subject-filter");
+const subsubjectFilter = document.querySelector("#subsubject-filter");
 const sourceFilter = document.querySelector("#source-filter");
 const statusMessage = document.querySelector("#status-message");
 const stats = document.querySelector("#stats");
@@ -12,8 +13,10 @@ const uploadPanel = document.querySelector("#upload-panel");
 const uploadModeMessage = document.querySelector("#upload-mode-message");
 const uploadForm = document.querySelector("#upload-form");
 const inboxForm = document.querySelector("#inbox-form");
+const repoDropForm = document.querySelector("#repo-drop-form");
 const uploadStatus = document.querySelector("#upload-status");
 const inboxList = document.querySelector("#inbox-list");
+const repoDropList = document.querySelector("#repo-drop-list");
 const jobList = document.querySelector("#job-list");
 const sourceList = document.querySelector("#source-list");
 const resultTemplate = document.querySelector("#result-template");
@@ -68,6 +71,7 @@ const tokenize = (text) =>
     .filter((token) => token && !STOP_WORDS.has(token));
 
 const unique = (values) => [...new Set(values)].sort((left, right) => left.localeCompare(right));
+const normalizeOptionalText = (value) => (value || "").trim();
 
 const normalizeTerm = (term) => {
   if (term.length > 5 && term.endsWith("ies")) return `${term.slice(0, -3)}y`;
@@ -133,7 +137,7 @@ const conceptPresent = (phrase, positionsMap, window = 10) => {
 };
 
 const scoreRecord = (record, analysis) => {
-  const fullText = [record.title, record.author, record.subject, record.excerpt, ...(record.keywords || [])].join(" ");
+  const fullText = [record.title, record.author, record.subject, record.subSubject || "", record.excerpt, ...(record.keywords || [])].join(" ");
   const rawTokens = (fullText.toLowerCase().match(/[a-z0-9]+/g) || []);
   const normalizedTokens = rawTokens.map(normalizeTerm);
   const normalizedSet = new Set(normalizedTokens);
@@ -151,7 +155,7 @@ const scoreRecord = (record, analysis) => {
   const focusHits = analysis.focusTerms.filter((term) => normalizedSet.has(term));
   const expandedHits = analysis.expandedTerms.filter((term) => normalizedSet.has(term) && !focusHits.includes(term));
   const conceptHits = analysis.conceptPhrases.filter((phrase) => conceptPresent(phrase, positionsMap));
-  const titleText = `${record.title} ${record.author} ${record.subject}`.toLowerCase();
+  const titleText = `${record.title} ${record.author} ${record.subject} ${record.subSubject || ""}`.toLowerCase();
   const titleFocusHits = analysis.focusTerms.filter((term) => titleText.includes(term));
 
   let score = 0;
@@ -200,7 +204,7 @@ const renderStats = () => {
 
 const renderSubjects = () => {
   const currentValue = subjectFilter.value;
-  const subjects = unique(library.records.map((record) => record.subject));
+  const subjects = unique(library.sources.map((source) => source.subject).filter(Boolean));
   subjectFilter.innerHTML = [
     '<option value="">All subjects</option>',
     ...subjects.map((subject) => `<option value="${escapeHtml(subject)}">${escapeHtml(subject)}</option>`)
@@ -210,17 +214,44 @@ const renderSubjects = () => {
   }
 };
 
+const renderSubsubjects = () => {
+  const currentValue = subsubjectFilter.value;
+  const available = library.sources
+    .filter((source) => !subjectFilter.value || source.subject === subjectFilter.value)
+    .map((source) => normalizeOptionalText(source.subSubject))
+    .filter(Boolean);
+  const subsubjects = unique(available);
+
+  subsubjectFilter.innerHTML = [
+    '<option value="">All sub-subjects</option>',
+    ...subsubjects.map((subsubject) => `<option value="${escapeHtml(subsubject)}">${escapeHtml(subsubject)}</option>`)
+  ].join("");
+
+  if (subsubjects.includes(currentValue)) {
+    subsubjectFilter.value = currentValue;
+  } else {
+    subsubjectFilter.value = "";
+  }
+};
+
 const renderSources = () => {
   const currentValue = sourceFilter.value;
+  const filteredSources = library.sources.filter(
+    (source) =>
+      (!subjectFilter.value || source.subject === subjectFilter.value) &&
+      (!subsubjectFilter.value || normalizeOptionalText(source.subSubject) === subsubjectFilter.value)
+  );
   sourceFilter.innerHTML = [
     '<option value="">All sources</option>',
-    ...library.sources.map(
+    ...filteredSources.map(
       (source) =>
         `<option value="${escapeHtml(source.sourceId)}">${escapeHtml(source.title)} (${escapeHtml(source.author)})</option>`
     )
   ].join("");
-  if (library.sources.some((source) => source.sourceId === currentValue)) {
+  if (filteredSources.some((source) => source.sourceId === currentValue)) {
     sourceFilter.value = currentValue;
+  } else {
+    sourceFilter.value = "";
   }
 };
 
@@ -267,14 +298,15 @@ const renderResults = (matches) => {
 
   matches.forEach((match) => {
     const fragment = resultTemplate.content.cloneNode(true);
-    fragment.querySelector(".subject-pill").textContent = match.subject;
+    fragment.querySelector(".subject-pill").textContent =
+      match.subSubject ? `${match.subject} / ${match.subSubject}` : match.subject;
     fragment.querySelector(".phrase-pill").textContent = match.exactPhraseMatch ? "Quoted phrase hit" : "Contextual match";
     fragment.querySelector(".concept-pill").textContent =
       match.conceptHits.length ? `${match.conceptHits.length} concept hits` : "Question analysis";
     fragment.querySelector(".score-pill").textContent = `${match.score} relevance`;
     fragment.querySelector(".result-title").textContent = match.title;
     fragment.querySelector(".result-meta").textContent =
-      `${match.author} | ${match.year} | Page ${match.page} | ${match.sourceId}`;
+      `${match.author} | ${match.year} | ${match.subSubject ? `${match.subSubject} | ` : ""}Page ${match.page} | ${match.sourceId}`;
     fragment.querySelector(".excerpt").textContent = `"${match.excerpt}"`;
 
     const tags = fragment.querySelector(".match-tags");
@@ -326,12 +358,30 @@ const renderInbox = (files) => {
   });
 };
 
+const renderRepoDrop = (files) => {
+  repoDropList.innerHTML = "";
+  if (!files.length) {
+    repoDropList.innerHTML = '<div class="empty-state">The repo drop is empty. Developers can commit PDFs into <code>repo-pdf-drop/</code> and import them here.</div>';
+    return;
+  }
+
+  files.slice(0, 8).forEach((file) => {
+    const fragment = listCardTemplate.content.cloneNode(true);
+    fragment.querySelector(".item-name").textContent = file.filename;
+    fragment.querySelector(".item-summary").textContent =
+      `${Math.max(1, Math.round(file.size / 1024 / 1024))} MB | committed developer upload`;
+    fragment.querySelector(".item-detail").textContent = "Ready to import while staying in the repo drop folder";
+    repoDropList.append(fragment);
+  });
+};
+
 const renderSourceList = () => {
   sourceList.innerHTML = "";
   library.sources.slice(0, 6).forEach((source) => {
     const fragment = listCardTemplate.content.cloneNode(true);
     fragment.querySelector(".item-name").textContent = source.title;
-    fragment.querySelector(".item-summary").textContent = `${source.excerptCount} excerpts | ${source.subject}`;
+    fragment.querySelector(".item-summary").textContent =
+      `${source.excerptCount} excerpts | ${source.subSubject ? `${source.subject} / ${source.subSubject}` : source.subject}`;
     fragment.querySelector(".item-detail").textContent =
       source.pdfPath ? `Saved in repo | ${source.ingestionStatus}` : `Repo seed | ${source.ingestionStatus}`;
     sourceList.append(fragment);
@@ -344,6 +394,7 @@ const fetchLibrary = async () => {
   library = await response.json();
   renderStats();
   renderSubjects();
+  renderSubsubjects();
   renderSources();
   renderSourceList();
 };
@@ -361,6 +412,7 @@ const searchEvidence = async () => {
 
   const matches = library.records
     .filter((record) => !subjectFilter.value || record.subject === subjectFilter.value)
+    .filter((record) => !subsubjectFilter.value || normalizeOptionalText(record.subSubject) === subsubjectFilter.value)
     .filter((record) => !sourceFilter.value || record.sourceRef === sourceFilter.value)
     .map((record) => scoreRecord(record, analysis))
     .filter(Boolean)
@@ -399,6 +451,13 @@ const refreshInbox = async () => {
   renderInbox(payload.files || []);
 };
 
+const refreshRepoDrop = async () => {
+  if (!localMode) return;
+  const response = await fetch("/api/repo-drop", { cache: "no-store" });
+  const payload = await response.json();
+  renderRepoDrop(payload.files || []);
+};
+
 const detectLocalMode = async () => {
   try {
     const response = await fetch("/api/health", { cache: "no-store" });
@@ -412,11 +471,13 @@ const detectLocalMode = async () => {
   if (localMode) {
     uploadForm.classList.remove("hidden");
     inboxForm.classList.remove("hidden");
+    repoDropForm.classList.remove("hidden");
     uploadModeMessage.textContent =
-      "Local mode is active. Small PDFs can upload here, and large books can be copied into library-inbox/ and imported into the repo library.";
+      "Local mode is active. Add a subject, optionally add a sub-subject, then upload directly, import from library-inbox/, or import developer PDFs from repo-pdf-drop/.";
   } else {
     uploadForm.classList.add("hidden");
     inboxForm.classList.add("hidden");
+    repoDropForm.classList.add("hidden");
     uploadModeMessage.textContent =
       "Shared GitHub mode is read-only. Run locally if you need to add books into the repo library.";
   }
@@ -447,7 +508,7 @@ const handleUpload = async (event) => {
   uploadStatus.textContent = `${payload.message}${skipped}`;
   uploadForm.reset();
   renderJobs(payload.jobs);
-  await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox()]);
+  await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox(), refreshRepoDrop()]);
 };
 
 const handleInboxImport = async (event) => {
@@ -459,7 +520,12 @@ const handleInboxImport = async (event) => {
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({})
+    body: JSON.stringify({
+      subject: document.querySelector("#upload-subject").value.trim(),
+      subSubject: document.querySelector("#upload-subsubject").value.trim(),
+      author: document.querySelector("#upload-author").value.trim(),
+      year: document.querySelector("#upload-year").value.trim()
+    })
   });
   const payload = await response.json();
   if (!response.ok) {
@@ -469,7 +535,34 @@ const handleInboxImport = async (event) => {
   const skipped = payload.skipped?.length ? ` Skipped duplicates: ${payload.skipped.join(", ")}.` : "";
   uploadStatus.textContent = `${payload.message}${skipped}`;
   renderJobs(payload.jobs || []);
-  await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox()]);
+  await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox(), refreshRepoDrop()]);
+};
+
+const handleRepoDropImport = async (event) => {
+  event.preventDefault();
+  uploadStatus.textContent = "Importing PDFs from repo-pdf-drop into the shared repo library...";
+
+  const response = await fetch("/api/import-repo-drop", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      subject: document.querySelector("#upload-subject").value.trim(),
+      subSubject: document.querySelector("#upload-subsubject").value.trim(),
+      author: document.querySelector("#upload-author").value.trim(),
+      year: document.querySelector("#upload-year").value.trim()
+    })
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || "Repo drop import failed.");
+  }
+
+  const skipped = payload.skipped?.length ? ` Skipped duplicates: ${payload.skipped.join(", ")}.` : "";
+  uploadStatus.textContent = `${payload.message}${skipped}`;
+  renderJobs(payload.jobs || []);
+  await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox(), refreshRepoDrop()]);
 };
 
 searchForm.addEventListener("submit", (event) => {
@@ -491,6 +584,21 @@ inboxForm.addEventListener("submit", (event) => {
   });
 });
 
+repoDropForm.addEventListener("submit", (event) => {
+  handleRepoDropImport(event).catch((error) => {
+    uploadStatus.textContent = error.message;
+  });
+});
+
+subjectFilter.addEventListener("change", () => {
+  renderSubsubjects();
+  renderSources();
+});
+
+subsubjectFilter.addEventListener("change", () => {
+  renderSources();
+});
+
 loadExampleButton.addEventListener("click", () => {
   queryInput.value = exampleQuery;
   queryInput.focus();
@@ -505,7 +613,7 @@ if ("serviceWorker" in navigator) {
 Promise.all([detectLocalMode(), fetchLibrary()])
   .then(() => {
     renderEmptyState("The shared repo library is ready. Ask a question to retrieve exact excerpts and citations.");
-    return Promise.all([refreshJobs(), refreshInbox()]);
+    return Promise.all([refreshJobs(), refreshInbox(), refreshRepoDrop()]);
   })
   .catch((error) => {
     statusMessage.textContent = error.message;

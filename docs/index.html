@@ -52,6 +52,15 @@
             </label>
 
             <label class="field">
+              <span>Sub-subject</span>
+              <select id="subsubject-filter">
+                <option value="">All sub-subjects</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="search-row">
+            <label class="field">
               <span>Source</span>
               <select id="source-filter">
                 <option value="">All sources</option>
@@ -90,22 +99,29 @@
         <form id="upload-form" class="upload-form hidden">
           <div class="search-row">
             <label class="field">
-              <span>Subject tag</span>
+              <span>Subject</span>
               <input id="upload-subject" name="subject" type="text" placeholder="Example: Public Health">
             </label>
 
             <label class="field">
-              <span>Author override</span>
-              <input id="upload-author" name="author" type="text" placeholder="Optional">
+              <span>Sub-subject</span>
+              <input id="upload-subsubject" name="subSubject" type="text" placeholder="Optional example: Sanitation">
             </label>
           </div>
 
           <div class="search-row">
             <label class="field">
+              <span>Author override</span>
+              <input id="upload-author" name="author" type="text" placeholder="Optional">
+            </label>
+
+            <label class="field">
               <span>Year override</span>
               <input id="upload-year" name="year" type="text" placeholder="Optional">
             </label>
+          </div>
 
+          <div class="search-row">
             <label class="field upload-dropzone" for="pdf-files">
               <span>PDF files</span>
               <input id="pdf-files" name="pdfs" type="file" accept="application/pdf" multiple>
@@ -134,9 +150,25 @@
           </div>
         </form>
 
+        <form id="repo-drop-form" class="upload-form hidden">
+          <div class="search-row">
+            <div class="field">
+              <span>Developer repo drop</span>
+              <p class="field-note">
+                Developers can place shared PDFs in <code>repo-pdf-drop/</code>, commit them, and then import them into the library from here.
+              </p>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button type="submit" class="secondary-button">Import repo-drop PDFs</button>
+          </div>
+        </form>
+
         <div class="upload-meta">
           <p id="upload-status" class="status-message">No library updates running.</p>
           <div id="inbox-list" class="upload-list"></div>
+          <div id="repo-drop-list" class="upload-list"></div>
           <div id="job-list" class="upload-list"></div>
           <div id="source-list" class="upload-list"></div>
         </div>
