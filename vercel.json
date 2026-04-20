@@ -3,28 +3,8 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/",
-      "destination": "/docs/index.html"
-    },
-    {
-      "source": "/manifest.webmanifest",
-      "destination": "/docs/manifest.webmanifest"
-    },
-    {
-      "source": "/service-worker.js",
-      "destination": "/docs/service-worker.js"
-    },
-    {
-      "source": "/library/:path*",
-      "destination": "/docs/library/:path*"
-    },
-    {
       "source": "/:path*",
-      "destination": "/docs/:path*"
+      "destination": "/api/index.py"
     }
   ],
   "headers": [
@@ -46,5 +26,10 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/index.py": {
+      "excludeFiles": "{.git/**,.venv/**,.run-state/**,public/**,src/**,uploads/**,__pycache__/**,data/**,library-inbox/**}"
+    }
+  }
 }
