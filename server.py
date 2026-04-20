@@ -1,7 +1,9 @@
 import json
+import os
 import re
 import sqlite3
 import threading
+import urllib.request
 import uuid
 from collections import defaultdict
 from datetime import datetime
@@ -12,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import numpy as np
 from pypdf import PdfReader
 
 
@@ -21,6 +24,8 @@ DATA_DIR = ROOT / "data"
 UPLOADS_DIR = ROOT / "uploads"
 DB_PATH = DATA_DIR / "evidence.sqlite"
 SAMPLE_PATH = DATA_DIR / "books.json"
+ENV_PATH = ROOT / ".env"
+OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 
 STOP_WORDS = {
     "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "into", "is",
@@ -114,6 +119,25 @@ def connect():
     return sqlite3.connect(DB_PATH)
 
 
+def load_env_file():
+    if not ENV_PATH.exists():
+        return
+
+    for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+def semantic_enabled():
+    return bool(os.environ.get("OPENAI_API_KEY"))
+
+
 def init_schema():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -149,11 +173,18 @@ def init_schema():
                 page INTEGER NOT NULL,
                 excerpt TEXT NOT NULL,
                 keywords_json TEXT NOT NULL,
+                embedding_json TEXT,
+                embedding_model TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (source_row_id) REFERENCES sources(id)
             )
             """
         )
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(excerpts)").fetchall()}
+        if "embedding_json" not in columns:
+            conn.execute("ALTER TABLE excerpts ADD COLUMN embedding_json TEXT")
+        if "embedding_model" not in columns:
+            conn.execute("ALTER TABLE excerpts ADD COLUMN embedding_model TEXT")
         conn.commit()
 
 
@@ -237,6 +268,7 @@ def get_stats():
         "sourceCount": int(source_count_value),
         "subjectCount": int(subject_count),
         "pendingOcrCount": int(pending_ocr_count),
+        "semanticEnabled": semantic_enabled(),
     }
 
 
@@ -269,6 +301,11 @@ def list_sources():
         }
         for row in rows
     ]
+
+
+def build_embedding_text(title: str, author: str, subject: str, excerpt: str, keywords_json: str) -> str:
+    keywords = json.loads(keywords_json or "[]")
+    return normalize_whitespace(" ".join([title, author, subject, excerpt, *keywords]))
 
 
 def list_jobs():
@@ -371,7 +408,7 @@ def concept_present(phrase: str, positions_map, window: int = 10):
 
 
 def score_excerpt(row, analysis):
-    source_ref, title, author, year, subject, page, excerpt, keywords_json = row
+    source_ref, title, author, year, subject, page, excerpt, keywords_json, _embedding_json, _embedding_model = row
     keywords = json.loads(keywords_json or "[]")
     full_text = " ".join([title, author, subject, excerpt, *keywords])
     raw_tokens = re.findall(r"[a-z0-9]+", full_text.lower())
@@ -439,7 +476,7 @@ def search(query: str, subject: str, source_id: str):
         if subject and source_id:
             rows = conn.execute(
                 """
-                SELECT source_ref, title, author, year, subject, page, excerpt, keywords_json
+                SELECT source_ref, title, author, year, subject, page, excerpt, keywords_json, embedding_json, embedding_model
                 FROM excerpts
                 WHERE subject = ? AND source_row_id IN (
                     SELECT id FROM sources WHERE source_id = ?
@@ -450,7 +487,7 @@ def search(query: str, subject: str, source_id: str):
         elif subject:
             rows = conn.execute(
                 """
-                SELECT source_ref, title, author, year, subject, page, excerpt, keywords_json
+                SELECT source_ref, title, author, year, subject, page, excerpt, keywords_json, embedding_json, embedding_model
                 FROM excerpts
                 WHERE subject = ?
                 """,
@@ -459,7 +496,7 @@ def search(query: str, subject: str, source_id: str):
         elif source_id:
             rows = conn.execute(
                 """
-                SELECT source_ref, title, author, year, subject, page, excerpt, keywords_json
+                SELECT source_ref, title, author, year, subject, page, excerpt, keywords_json, embedding_json, embedding_model
                 FROM excerpts
                 WHERE source_row_id IN (
                     SELECT id FROM sources WHERE source_id = ?
@@ -470,7 +507,7 @@ def search(query: str, subject: str, source_id: str):
         else:
             rows = conn.execute(
                 """
-                SELECT source_ref, title, author, year, subject, page, excerpt, keywords_json
+                SELECT source_ref, title, author, year, subject, page, excerpt, keywords_json, embedding_json, embedding_model
                 FROM excerpts
                 """
             ).fetchall()
@@ -482,7 +519,115 @@ def search(query: str, subject: str, source_id: str):
             matches.append(scored)
 
     matches.sort(key=lambda item: (-item["score"], -int(item["exactPhraseMatch"]), item["page"]))
+
+    if semantic_enabled() and matches:
+        candidate_rows = rows if len(rows) <= 120 else rows[: min(len(rows), 200)]
+        candidate_refs = {match["sourceId"] for match in matches[:120]}
+        semantic_rows = [row for row in candidate_rows if row[0] in candidate_refs]
+        semantic_scores = semantic_rerank(normalized_query, semantic_rows)
+
+        for match in matches:
+            semantic = semantic_scores.get(match["sourceId"])
+            match["semanticSimilarity"] = semantic
+            if semantic is not None:
+                match["score"] = round((semantic * 1000) + match["score"], 3)
+
+        matches.sort(
+            key=lambda item: (
+                -(item.get("semanticSimilarity") if item.get("semanticSimilarity") is not None else -1),
+                -item["score"],
+                -int(item["exactPhraseMatch"]),
+                item["page"],
+            )
+        )
+
     return {"analysis": analysis, "results": matches[:50]}
+
+
+def request_embeddings(texts: list[str]) -> list[list[float]]:
+    if not texts:
+        return []
+
+    body = json.dumps(
+        {
+            "model": OPENAI_EMBEDDING_MODEL,
+            "input": texts,
+            "encoding_format": "float",
+        }
+    ).encode("utf-8")
+
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/embeddings",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}",
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(request, timeout=60) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    return [item["embedding"] for item in payload["data"]]
+
+
+def update_cached_embeddings(source_refs: list[str], vectors: list[list[float]]):
+    if not source_refs:
+        return
+
+    with connect() as conn:
+        for source_ref, vector in zip(source_refs, vectors):
+            conn.execute(
+                """
+                UPDATE excerpts
+                SET embedding_json = ?, embedding_model = ?
+                WHERE source_ref = ?
+                """,
+                (json.dumps(vector), OPENAI_EMBEDDING_MODEL, source_ref),
+            )
+        conn.commit()
+
+
+def cosine_similarity(query_vector, document_vector):
+    query = np.array(query_vector, dtype=float)
+    document = np.array(document_vector, dtype=float)
+    denominator = np.linalg.norm(query) * np.linalg.norm(document)
+    if denominator == 0:
+        return 0.0
+    return float(np.dot(query, document) / denominator)
+
+
+def semantic_rerank(query: str, rows):
+    if not rows or not semantic_enabled():
+        return {}
+
+    try:
+        query_vector = request_embeddings([query])[0]
+        cached = {}
+        missing_refs = []
+        missing_texts = []
+
+        for row in rows:
+            source_ref, title, author, subject, excerpt = row[0], row[1], row[2], row[4], row[6]
+            keywords_json, embedding_json, embedding_model = row[7], row[8], row[9]
+            if embedding_json and embedding_model == OPENAI_EMBEDDING_MODEL:
+                cached[source_ref] = json.loads(embedding_json)
+            else:
+                missing_refs.append(source_ref)
+                missing_texts.append(build_embedding_text(title, author, subject, excerpt, keywords_json))
+
+        if missing_texts:
+            missing_vectors = []
+            batch_size = 50
+            for index in range(0, len(missing_texts), batch_size):
+                missing_vectors.extend(request_embeddings(missing_texts[index:index + batch_size]))
+            update_cached_embeddings(missing_refs, missing_vectors)
+            cached.update({source_ref: vector for source_ref, vector in zip(missing_refs, missing_vectors)})
+
+        return {source_ref: cosine_similarity(query_vector, vector) for source_ref, vector in cached.items()}
+    except Exception:
+        return {}
 
 
 def safe_filename(name: str) -> str:
@@ -771,6 +916,7 @@ class EvidenceHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    load_env_file()
     init_schema()
     seed_database()
     server = ThreadingHTTPServer(("127.0.0.1", 3000), EvidenceHandler)

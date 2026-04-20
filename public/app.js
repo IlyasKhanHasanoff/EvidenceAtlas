@@ -41,6 +41,11 @@ const renderStats = (payload) => {
     card.innerHTML = `<strong>${item.value}</strong><span>${item.label}</span>`;
     stats.append(card);
   });
+
+  const semanticCard = document.createElement("div");
+  semanticCard.className = "stat-card";
+  semanticCard.innerHTML = `<strong>${payload.semanticEnabled ? "On" : "Off"}</strong><span>Semantic rerank</span>`;
+  stats.append(semanticCard);
 };
 
 const renderSubjects = (subjects) => {
@@ -135,7 +140,10 @@ const renderResults = (matches) => {
     fragment.querySelector(".phrase-pill").textContent = match.exactPhraseMatch ? "Quoted phrase hit" : "Contextual match";
     fragment.querySelector(".concept-pill").textContent =
       match.conceptHits.length ? `${match.conceptHits.length} concept hits` : "Question analysis";
-    fragment.querySelector(".score-pill").textContent = `${match.score} relevance`;
+    fragment.querySelector(".score-pill").textContent =
+      match.semanticSimilarity !== null && match.semanticSimilarity !== undefined
+        ? `${match.semanticSimilarity.toFixed(3)} semantic`
+        : `${match.score} heuristic`;
     fragment.querySelector(".result-title").textContent = match.title;
     fragment.querySelector(".result-meta").textContent =
       `${match.author} | ${match.year} | Page ${match.page} | ${match.sourceId}`;
@@ -243,7 +251,7 @@ const searchEvidence = async () => {
   renderAnalysis(payload.analysis);
   statusMessage.textContent = payload.analysis.exactPhrases.length
     ? "Search completed with quoted exact-phrase constraints plus question analysis."
-    : "Search completed with question analysis. Results are ranked by concept and context evidence, not naive word overlap alone.";
+    : "Search completed with question analysis. If OpenAI embeddings are configured, semantic reranking is also applied.";
   renderResults(payload.results);
 };
 

@@ -33,12 +33,19 @@ What it does automatically:
 - Starts the local server if it is not already running.
 - Opens `http://127.0.0.1:3000` in your browser.
 
+To enable OpenAI semantic reranking, add an `.env` file in the project root with:
+
+```env
+OPENAI_API_KEY=your_api_key_here
+```
+
 To stop the local background server, run [stop-local.ps1](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\stop-local.ps1).
 
 ## Search behavior
 
 - Search is based on question analysis, concept phrases, focus terms, and contextual relevance.
 - Quoted words or phrases are treated as exact requirements.
+- When `OPENAI_API_KEY` is configured, OpenAI embeddings rerank the candidate excerpts semantically.
 - Results are ranked by quoted phrase hits, concept hits, focus-term hits, and page position.
 - Every result is shown as an exact excerpt with citation metadata.
 - The UI does not generate narrative answers.
