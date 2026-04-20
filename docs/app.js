@@ -33,7 +33,8 @@ const citationTemplate = document.querySelector("#citation-template");
 const STOP_WORDS = new Set([
   "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "into", "is", "it",
   "of", "on", "or", "that", "the", "there", "this", "to", "was", "what", "when", "where", "which",
-  "who", "why", "with", "evidence", "find", "about", "tell", "me"
+  "who", "why", "with", "evidence", "find", "about", "tell", "me", "i", "should", "say", "says",
+  "said", "saying", "would", "could", "can"
 ]);
 
 const RELATED_TERMS = {
@@ -104,6 +105,7 @@ const buildConceptPhrases = (tokens) => {
 };
 
 const analyzeQuestion = (query) => {
+  const lowered = query.toLowerCase();
   const exactPhrases = [...query.matchAll(/"([^"]+)"/g)].map((match) => match[1].trim()).filter(Boolean);
   const unquoted = query.replace(/"[^"]+"/g, " ");
   const rawTokens = tokenize(unquoted);
@@ -115,12 +117,21 @@ const analyzeQuestion = (query) => {
     (RELATED_TERMS[term] || []).forEach((related) => expandedTerms.add(related));
   });
 
+  const intentTerms = [];
+  if (/\b(say|recite|repeat|words?)\b/.test(lowered)) {
+    intentTerms.push("say", "repeat", "recite", "words", "hear");
+  }
+  if (/\b(where|from)\b/.test(lowered)) {
+    intentTerms.push("from", "born", "place", "city");
+  }
+
   return {
     originalQuery: query,
     exactPhrases,
     focusTerms,
     conceptPhrases,
     expandedTerms: [...expandedTerms].slice(0, 24),
+    intentTerms: unique(intentTerms),
     mode: exactPhrases.length ? "quoted-exact" : "analyzed"
   };
 };
@@ -162,15 +173,21 @@ const scoreRecord = (record, analysis) => {
 
   const focusHits = analysis.focusTerms.filter((term) => normalizedSet.has(term));
   const expandedHits = analysis.expandedTerms.filter((term) => normalizedSet.has(term) && !focusHits.includes(term));
+  const intentHits = (analysis.intentTerms || []).filter((term) => normalizedSet.has(term));
   const conceptHits = analysis.conceptPhrases.filter((phrase) => conceptPresent(phrase, positionsMap));
   const titleText = `${record.title} ${record.author} ${record.topic || ""} ${record.subject || ""}`.toLowerCase();
   const titleFocusHits = analysis.focusTerms.filter((term) => titleText.includes(term));
+
+  if (analysis.focusTerms.length && !(focusHits.length || exactPhraseHits.length || titleFocusHits.length)) {
+    return null;
+  }
 
   let score = 0;
   score += exactPhraseHits.length * 120;
   score += conceptHits.length * 22;
   score += focusHits.length * 8;
   score += expandedHits.slice(0, 6).length * 3;
+  score += intentHits.length * 10;
   score += titleFocusHits.length * 10;
 
   if (score <= 0) return null;
@@ -188,6 +205,7 @@ const scoreRecord = (record, analysis) => {
     exactPhraseMatch: exactPhraseHits.length > 0,
     conceptHits,
     focusHits,
+    intentHits,
     matches
   };
 };

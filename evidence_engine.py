@@ -12,7 +12,8 @@ ENV_PATH = ROOT / ".env"
 STOP_WORDS = {
     "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "into", "is",
     "it", "of", "on", "or", "that", "the", "there", "this", "to", "was", "what", "when", "where",
-    "which", "who", "why", "with", "evidence", "find", "about", "tell", "me"
+    "which", "who", "why", "with", "evidence", "find", "about", "tell", "me", "i", "should",
+    "say", "says", "said", "saying", "would", "could", "can"
 }
 
 RELATED_TERMS = {
@@ -36,6 +37,27 @@ RELATED_TERMS = {
     "water": ["drainage", "sewer", "sewers"],
 }
 
+VARIANT_GROUPS = [
+    ["adhan", "athan", "azan", "adhan"],
+    ["hadith", "hadeeth", "hadis"],
+    ["tafsir", "tafseer", "tefsir"],
+    ["quran", "qur-an", "koran"],
+    ["salah", "salat", "namaz"],
+    ["dua", "duaa", "du'a", "supplication"],
+]
+
+VARIANT_CANONICAL = {}
+VARIANT_EXPANSIONS = {}
+for group in VARIANT_GROUPS:
+    canonical = group[0]
+    normalized_group = set()
+    for item in group:
+        normalized = re.sub(r"[^a-z0-9]", "", item.lower())
+        normalized_group.add(normalized)
+        VARIANT_CANONICAL[normalized] = canonical
+    for item in normalized_group:
+        VARIANT_EXPANSIONS[item] = sorted(normalized_group)
+
 
 def load_env_from_file():
     if os.environ.get("OPENAI_API_KEY") or not ENV_PATH.exists():
@@ -54,6 +76,10 @@ def load_library():
 
 
 def normalize_term(term: str) -> str:
+    compact = re.sub(r"[^a-z0-9]", "", term.lower())
+    if compact in VARIANT_CANONICAL:
+        return VARIANT_CANONICAL[compact]
+
     if len(term) > 5 and term.endswith("ies"):
         return f"{term[:-3]}y"
     if len(term) > 4 and term.endswith("ing"):
@@ -87,6 +113,7 @@ def build_concept_phrases(tokens):
 
 
 def analyze_question(query: str):
+    lowered = query.lower()
     exact_phrases = [match.group(1).strip() for match in re.finditer(r'"([^"]+)"', query) if match.group(1).strip()]
     unquoted = re.sub(r'"[^"]+"', " ", query)
     raw_tokens = tokenize(unquoted)
@@ -101,6 +128,14 @@ def analyze_question(query: str):
     for term in focus_terms:
         for related in RELATED_TERMS.get(term, []):
             expanded_terms.add(related)
+        for variant in VARIANT_EXPANSIONS.get(term, []):
+            expanded_terms.add(variant)
+
+    intent_terms = []
+    if re.search(r"\b(say|recite|repeat|words?)\b", lowered):
+        intent_terms.extend(["say", "repeat", "recite", "words", "hear"])
+    if re.search(r"\b(where|from)\b", lowered):
+        intent_terms.extend(["from", "born", "place", "city"])
 
     return {
         "originalQuery": query,
@@ -108,6 +143,7 @@ def analyze_question(query: str):
         "focusTerms": focus_terms,
         "conceptPhrases": concept_phrases,
         "expandedTerms": list(expanded_terms)[:24],
+        "intentTerms": unique(intent_terms),
         "mode": "quoted-exact" if exact_phrases else "analyzed",
     }
 
@@ -155,6 +191,7 @@ def score_record(record, analysis):
 
     focus_hits = [term for term in analysis["focusTerms"] if term in normalized_set]
     expanded_hits = [term for term in analysis["expandedTerms"] if term in normalized_set and term not in focus_hits]
+    intent_hits = [term for term in analysis.get("intentTerms", []) if term in normalized_set]
     concept_hits = [phrase for phrase in analysis["conceptPhrases"] if concept_present(phrase, positions_map)]
     title_text = " ".join([
         record.get("title", ""),
@@ -164,11 +201,15 @@ def score_record(record, analysis):
     ]).lower()
     title_focus_hits = [term for term in analysis["focusTerms"] if term in title_text]
 
+    if analysis["focusTerms"] and not (focus_hits or exact_phrase_hits or title_focus_hits):
+        return None
+
     score = 0
     score += len(exact_phrase_hits) * 120
     score += len(concept_hits) * 22
     score += len(focus_hits) * 8
     score += min(len(expanded_hits), 6) * 3
+    score += len(intent_hits) * 10
     score += len(title_focus_hits) * 10
 
     if score <= 0:
@@ -187,6 +228,7 @@ def score_record(record, analysis):
         "exactPhraseMatch": bool(exact_phrase_hits),
         "conceptHits": concept_hits,
         "focusHits": focus_hits,
+        "intentHits": intent_hits,
         "matches": matches,
     })
     return enriched
@@ -233,10 +275,10 @@ def build_citations(matches):
 def fallback_answer(question, citations):
     if not citations:
         return {
-            "answer": "The available library does not contain enough cited evidence to answer that question yet.",
-            "grounded": False,
-            "usedCitations": [],
-        }
+        "answer": "The available library does not contain enough cited evidence to answer that question yet.",
+        "grounded": False,
+        "usedCitations": [],
+    }
 
     lead = citations[0]
     answer = (

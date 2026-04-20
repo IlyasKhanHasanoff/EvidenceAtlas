@@ -22,7 +22,6 @@ INBOX_DIR = ROOT / "library-inbox"
 REPO_DROP_DIR = ROOT / "repo-pdf-drop"
 INDEX_PATH = LIBRARY_DIR / "index.json"
 MANIFEST_PATH = LIBRARY_DIR / "source-manifest.json"
-SAMPLE_PATH = ROOT / "data" / "books.json"
 
 JOB_LOCK = threading.Lock()
 LIBRARY_LOCK = threading.Lock()
@@ -48,8 +47,87 @@ def derive_keywords(text: str) -> list[str]:
     return sorted(set(tokenize(text)))[:12]
 
 
+def clean_extracted_text(text: str) -> str:
+    lines = []
+
+    for raw_line in (text or "").splitlines():
+        line = normalize_whitespace(raw_line)
+        if not line:
+            continue
+        if re.match(r"^\d+\s*-\s*THE BOOK OF\b", line, flags=re.IGNORECASE):
+            continue
+        if re.match(r"^\(?\d+\)?\s*CHAPTER\b", line, flags=re.IGNORECASE):
+            continue
+        if re.search(r"\bCONTENTS OF VOLUME\b", line, flags=re.IGNORECASE):
+            continue
+        if re.search(r"\bEND OF VOLUME\b", line, flags=re.IGNORECASE):
+            continue
+        if re.match(r"^page\s+\d+$", line, flags=re.IGNORECASE):
+            continue
+        if len(line) < 3:
+            continue
+
+        ascii_ratio = sum(1 for char in line if ord(char) < 128) / max(1, len(line))
+        if ascii_ratio < 0.65:
+            continue
+
+        symbol_ratio = sum(1 for char in line if not char.isalnum() and char not in " .,;:'\"!?()-/") / max(1, len(line))
+        if symbol_ratio > 0.22:
+            continue
+
+        line = re.sub(r"\s+([,.;:!?])", r"\1", line)
+        line = re.sub(r"([,.;:!?])([A-Za-z])", r"\1 \2", line)
+        line = re.sub(r"\(\s+", "(", line)
+        line = re.sub(r"\s+\)", ")", line)
+        lines.append(line)
+
+    cleaned = normalize_whitespace(" ".join(lines))
+    cleaned = re.sub(r"\b(?:THE BOOK OF|CHAPTER)\b.*?(?=[A-Z][a-z]|$)", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\[[^\]]{0,20}[^\x00-\x7F][^\]]*\]", "", cleaned)
+    cleaned = re.sub(r"[^\x00-\x7F]+", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip(" -\"'")
+
+
+def finalize_excerpt(chunk: str) -> str:
+    excerpt = normalize_whitespace(chunk)
+    for marker in ["Narrated ", "Allah's Messenger", "The Prophet", "And the Statement of Allah"]:
+        index = excerpt.find(marker)
+        if index > 0 and index < 220:
+            excerpt = excerpt[index:]
+            break
+
+    excerpt = re.sub(r"^\d+\s*[-–]?\s*THE BOOK OF[A-Z0-9' .:/()-]+", "", excerpt, flags=re.IGNORECASE)
+    excerpt = re.sub(r"^\(?\d+\)?\s*(?:CHAPTER|CHAFFER)\.?", "", excerpt, flags=re.IGNORECASE)
+    excerpt = re.sub(r"\[[^\]]*\]", "", excerpt)
+    excerpt = re.sub(r"\b(?=\w*[A-Za-z])(?=\w*\d)\w+\b", "", excerpt)
+    excerpt = re.sub(r"\b[A-Za-z]{0,3}[/:;][A-Za-z0-9]{0,4}\b", "", excerpt)
+    excerpt = re.sub(r"\.{3,}", " ", excerpt)
+    excerpt = re.sub(r"\s*-\s*", " - ", excerpt)
+    excerpt = re.sub(r"\s+", " ", excerpt)
+    excerpt = re.sub(r"([.!?])\s+(?:[A-Za-z]{1,3}\s+){2,10}[A-Za-z]{1,3}\s*$", r"\1", excerpt)
+    excerpt = re.sub(r"([.!?])\s+[A-Za-z]{1,3}(?:\s+[A-Za-z]{1,3}){0,6}\s*$", r"\1", excerpt)
+    return excerpt.strip(" -\"'")
+
+
+def is_readable_chunk(chunk: str) -> bool:
+    if len(chunk) < 120:
+        return False
+    if re.search(r"\bCONTENTS OF VOLUME\b", chunk, flags=re.IGNORECASE):
+        return False
+    if re.search(r"\bEND OF VOLUME\b", chunk, flags=re.IGNORECASE):
+        return False
+    if chunk.upper().count("THE BOOK OF") >= 1 and "Narrated" not in chunk:
+        return False
+    if chunk.upper().count("CHAPTER") >= 2 or chunk.upper().count("CHAFFER") >= 2:
+        return False
+    if re.search(r"\.{4,}", chunk):
+        return False
+    return True
+
+
 def split_into_excerpt_chunks(text: str) -> list[str]:
-    cleaned = normalize_whitespace(text)
+    cleaned = clean_extracted_text(text)
     if not cleaned:
         return []
 
@@ -69,7 +147,8 @@ def split_into_excerpt_chunks(text: str) -> list[str]:
     if current:
         chunks.append(current)
 
-    return [chunk for chunk in chunks if len(chunk) >= 90]
+    finalized = [finalize_excerpt(chunk) for chunk in chunks]
+    return [chunk for chunk in finalized if is_readable_chunk(chunk)]
 
 
 def safe_filename(name: str) -> str:
@@ -115,53 +194,7 @@ def ensure_library_index():
     if INDEX_PATH.exists():
         migrate_library_schema()
         return
-
-    payload = json.loads(SAMPLE_PATH.read_text(encoding="utf-8"))
-    sources = {}
-    records = []
-
-    for record in payload["records"]:
-        source_topic = record.get("topic") or record["subject"]
-        source_subject = record.get("subject") if record.get("topic") else record.get("subSubject")
-        source_key = f"{record['title']}|{record['author']}|{record['year']}|{source_topic}|{source_subject}"
-        if source_key not in sources:
-            sources[source_key] = {
-                "sourceId": f"SEED-{re.sub(r'[^A-Z0-9]+', '-', record['title'].upper()).strip('-')}",
-                "title": record["title"],
-                "author": record["author"],
-                "year": str(record["year"]),
-                "topic": source_topic,
-                "subject": source_subject,
-                "pdfPath": None,
-                "originalFilename": None,
-                "ingestionStatus": "seeded",
-                "excerptCount": 0,
-            }
-
-        sources[source_key]["excerptCount"] += 1
-        records.append(
-            {
-                "sourceId": record["sourceId"],
-                "sourceRef": sources[source_key]["sourceId"],
-                "title": record["title"],
-                "author": record["author"],
-                "year": str(record["year"]),
-                "topic": source_topic,
-                "subject": source_subject,
-                "page": int(record["page"]),
-                "excerpt": record["excerpt"],
-                "keywords": record.get("keywords", []),
-                "pdfPath": None,
-                "originalFilename": None,
-            }
-        )
-
-    library = {
-        "generatedAt": datetime.utcnow().isoformat(),
-        "sources": list(sources.values()),
-        "records": records,
-    }
-    INDEX_PATH.write_text(json.dumps(library, indent=2), encoding="utf-8")
+    save_library({"generatedAt": datetime.utcnow().isoformat(), "sources": [], "records": []})
 
 
 def migrate_library_schema():
