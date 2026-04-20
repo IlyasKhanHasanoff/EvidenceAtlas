@@ -22,9 +22,16 @@ Evidence Atlas is a retrieval-only evidence finder for scanned books. It stores 
 
 ## Run locally
 
-1. Install dependencies with `pip install -r requirements.txt`.
-2. Start the app with `python server.py`.
-3. Open `http://localhost:3000`.
+Run [run-local.bat](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\run-local.bat) or [run-local.ps1](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\run-local.ps1).
+
+What it does automatically:
+
+- Creates `.venv` on first run.
+- Installs or refreshes requirements only when `requirements.txt` changes.
+- Starts the local server if it is not already running.
+- Opens `http://127.0.0.1:3000` in your browser.
+
+To stop the local background server, run [stop-local.ps1](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\stop-local.ps1).
 
 ## Search behavior
 

@@ -1,10 +1,11 @@
-import cgi
 import json
 import re
 import shutil
 import sqlite3
 from collections import defaultdict
 from datetime import datetime
+from email import policy
+from email.parser import BytesParser
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from http import HTTPStatus
@@ -311,6 +312,40 @@ def safe_filename(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "-", name)
 
 
+def parse_multipart_form_data(headers, body: bytes):
+    content_type = headers.get("Content-Type", "")
+    if "multipart/form-data" not in content_type:
+        return {}, []
+
+    message = BytesParser(policy=policy.default).parsebytes(
+        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8") + body
+    )
+
+    fields = {}
+    files = []
+
+    for part in message.iter_parts():
+        name = part.get_param("name", header="content-disposition")
+        filename = part.get_filename()
+        payload = part.get_payload(decode=True) or b""
+
+        if not name:
+            continue
+
+        if filename:
+            files.append(
+                {
+                    "name": name,
+                    "filename": filename,
+                    "content": payload,
+                }
+            )
+        else:
+            fields[name] = payload.decode(part.get_content_charset() or "utf-8", errors="replace").strip()
+
+    return fields, files
+
+
 def ingest_pdf(file_path: Path, original_name: str, subject: str, author: str, year: str):
     reader = PdfReader(str(file_path))
     title = re.sub(r"\.pdf$", "", original_name, flags=re.IGNORECASE)
@@ -467,33 +502,25 @@ class EvidenceHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND, "Route not found")
             return
 
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": self.headers.get("Content-Type"),
-            },
-        )
-
-        raw_files = form["pdfs"] if "pdfs" in form else []
-        file_items = raw_files if isinstance(raw_files, list) else [raw_files]
-        file_items = [item for item in file_items if getattr(item, "filename", None)]
+        content_length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(content_length)
+        fields, file_items = parse_multipart_form_data(self.headers, body)
+        file_items = [item for item in file_items if item.get("name") == "pdfs" and item.get("filename")]
 
         if not file_items:
             self._send_json({"error": "Choose at least one PDF file."}, status=HTTPStatus.BAD_REQUEST)
             return
 
-        subject = form.getfirst("subject", "").strip()
-        author = form.getfirst("author", "").strip()
-        year = form.getfirst("year", "").strip()
+        subject = fields.get("subject", "").strip()
+        author = fields.get("author", "").strip()
+        year = fields.get("year", "").strip()
         uploaded = []
 
         for item in file_items:
-            original_name = safe_filename(Path(item.filename).name)
+            original_name = safe_filename(Path(item["filename"]).name)
             destination = UPLOADS_DIR / f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{original_name}"
             with destination.open("wb") as output_file:
-                shutil.copyfileobj(item.file, output_file)
+                output_file.write(item["content"])
             uploaded.append(ingest_pdf(destination, original_name, subject, author, year))
 
         self._send_json({"uploaded": uploaded, "stats": get_stats()}, status=HTTPStatus.CREATED)

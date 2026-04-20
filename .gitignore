@@ -6,3 +6,5 @@ data/evidence.sqlite-wal
 .env
 __pycache__/
 *.log
+.venv/
+.run-state/
