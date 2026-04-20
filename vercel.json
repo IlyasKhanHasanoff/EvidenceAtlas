@@ -26,10 +26,5 @@
         }
       ]
     }
-  ],
-  "functions": {
-    "api/index.py": {
-      "excludeFiles": "{.git/**,.venv/**,.run-state/**,public/**,src/**,uploads/**,__pycache__/**,data/**,library-inbox/**}"
-    }
-  }
+  ]
 }
