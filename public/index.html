@@ -16,8 +16,8 @@
         <p class="eyebrow">Retrieval-Only Research Interface</p>
         <h1>Search scanned books for cited evidence, not generated answers.</h1>
         <p class="hero-text">
-          Every search only returns indexed excerpts, page references, and source metadata. The interface never writes
-          an answer for the user. It only surfaces evidence from the stored collection.
+          The system analyzes the question to understand focus terms and concepts before searching, but it still only
+          returns indexed excerpts, page references, and source metadata.
         </p>
       </div>
 
@@ -27,7 +27,7 @@
           <li>No generative summaries</li>
           <li>No suggestive completions</li>
           <li>Only indexed excerpts from uploaded or seeded books</li>
-          <li>Every result shows page, source, and exact excerpt</li>
+          <li>Quoted words are treated as exact constraints</li>
         </ul>
       </aside>
     </header>
@@ -41,7 +41,7 @@
               id="query"
               name="query"
               rows="4"
-              placeholder="Example: What evidence is there about public sanitation reforms in industrial cities?"
+              placeholder='Example: What evidence is there about sanitation reform in industrial cities?'
             ></textarea>
           </label>
 
@@ -63,18 +63,21 @@
 
           <div class="search-row">
             <label class="field">
-              <span>Minimum matching terms</span>
-              <input id="min-score" name="min-score" type="range" min="1" max="6" value="2">
-              <small id="min-score-label">2 matching terms</small>
+              <span>Question analysis</span>
+              <div class="analysis-help">
+                <strong>Use quotation marks only when you want an exact phrase.</strong>
+                <small>Example: evidence about sanitation reform in industrial cities</small>
+                <small>Example with exact phrase: evidence about "dark rooms" and housing reform</small>
+              </div>
             </label>
 
-            <label class="field checkbox-field">
-              <span>Search mode</span>
-              <label class="checkbox-row" for="phrase-only">
-                <input id="phrase-only" name="phraseOnly" type="checkbox" value="1">
-                <strong>Require exact phrase match</strong>
-              </label>
-              <small>When enabled, only exact phrase hits appear. When disabled, term-overlap evidence is also shown.</small>
+            <label class="field">
+              <span>Results are ranked by</span>
+              <div class="analysis-help">
+                <strong>Question concepts, focus terms, and quoted constraints.</strong>
+                <small>No answer text is generated. The system only shows cited excerpts.</small>
+                <small>Quoted phrases must appear literally in the result when you include them.</small>
+              </div>
             </label>
           </div>
 
@@ -94,6 +97,7 @@
           Seeded excerpts are available immediately. Upload new PDFs to add persistent sources and searchable passages.
         </p>
         <div id="stats" class="stats-grid"></div>
+        <div id="analysis-summary" class="analysis-summary"></div>
       </section>
 
       <section class="panel upload-panel">
@@ -102,8 +106,8 @@
           <h2>Upload books into the evidence database.</h2>
         </div>
         <p class="status-message">
-          Text-based PDFs are indexed immediately. If a scan has no text layer, it is stored and marked as needing OCR
-          instead of being silently treated as searchable.
+          Large PDFs are accepted quickly and processed in the background. You can keep searching while book ingestion
+          continues page by page.
         </p>
 
         <form id="upload-form" class="upload-form">
@@ -129,17 +133,18 @@
               <span>PDF files</span>
               <input id="pdf-files" name="pdfs" type="file" accept="application/pdf" multiple>
               <strong>Choose one or more PDFs</strong>
-              <small>Files are uploaded to the local server, parsed into page-level excerpts, and stored persistently.</small>
+              <small>Files are uploaded immediately, then ingested in the background with live job status.</small>
             </label>
           </div>
 
           <div class="actions">
-            <button type="submit" class="primary-button">Upload and index PDFs</button>
+            <button type="submit" class="primary-button">Queue PDFs for ingestion</button>
           </div>
         </form>
 
         <div class="upload-meta">
           <p id="upload-status" class="status-message">No uploads yet.</p>
+          <div id="job-list" class="upload-list"></div>
           <div id="upload-list" class="upload-list"></div>
         </div>
       </section>
@@ -164,6 +169,7 @@
         <span class="subject-pill"></span>
         <div class="result-badges">
           <span class="phrase-pill"></span>
+          <span class="concept-pill"></span>
           <span class="score-pill"></span>
         </div>
       </div>
@@ -171,7 +177,7 @@
       <p class="result-meta"></p>
       <blockquote class="excerpt"></blockquote>
       <div class="match-section">
-        <p class="match-label">Matched terms</p>
+        <p class="match-label">Search evidence matched on</p>
         <div class="match-tags"></div>
       </div>
     </article>
@@ -182,6 +188,14 @@
       <strong class="upload-name"></strong>
       <span class="upload-summary"></span>
       <span class="upload-status-line"></span>
+    </article>
+  </template>
+
+  <template id="job-template">
+    <article class="upload-item">
+      <strong class="job-name"></strong>
+      <span class="job-summary"></span>
+      <span class="job-status-line"></span>
     </article>
   </template>
 

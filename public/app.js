@@ -1,22 +1,23 @@
 const queryInput = document.querySelector("#query");
 const subjectFilter = document.querySelector("#subject-filter");
 const sourceFilter = document.querySelector("#source-filter");
-const minScoreInput = document.querySelector("#min-score");
-const minScoreLabel = document.querySelector("#min-score-label");
-const phraseOnlyInput = document.querySelector("#phrase-only");
 const statusMessage = document.querySelector("#status-message");
 const stats = document.querySelector("#stats");
+const analysisSummary = document.querySelector("#analysis-summary");
 const results = document.querySelector("#results");
 const resultCount = document.querySelector("#result-count");
 const searchForm = document.querySelector("#search-form");
 const loadExampleButton = document.querySelector("#load-example");
 const uploadForm = document.querySelector("#upload-form");
 const uploadStatus = document.querySelector("#upload-status");
+const jobList = document.querySelector("#job-list");
 const uploadList = document.querySelector("#upload-list");
 const resultTemplate = document.querySelector("#result-template");
 const uploadTemplate = document.querySelector("#upload-template");
+const jobTemplate = document.querySelector("#job-template");
 
 const exampleQuery = "What evidence is there about sanitation reform in industrial cities?";
+let pollHandle = null;
 
 const escapeHtml = (value) =>
   String(value)
@@ -73,6 +74,45 @@ const renderSources = (sources) => {
   }
 };
 
+const renderAnalysis = (analysis) => {
+  analysisSummary.innerHTML = "";
+
+  if (!analysis) {
+    return;
+  }
+
+  const card = document.createElement("div");
+  card.className = "analysis-card";
+  card.innerHTML = `
+    <strong>Question analysis mode: ${escapeHtml(analysis.mode)}</strong>
+    <div class="analysis-chip-row" id="analysis-exact"></div>
+    <div class="analysis-chip-row" id="analysis-concepts"></div>
+    <div class="analysis-chip-row" id="analysis-expanded"></div>
+  `;
+
+  const exactRow = card.querySelector("#analysis-exact");
+  const conceptRow = card.querySelector("#analysis-concepts");
+  const expandedRow = card.querySelector("#analysis-expanded");
+
+  if (analysis.exactPhrases.length) {
+    exactRow.innerHTML = analysis.exactPhrases
+      .map((phrase) => `<span class="analysis-chip">Exact: "${escapeHtml(phrase)}"</span>`)
+      .join("");
+  }
+
+  conceptRow.innerHTML = analysis.conceptPhrases
+    .slice(0, 5)
+    .map((phrase) => `<span class="analysis-chip">Concept: ${escapeHtml(phrase)}</span>`)
+    .join("");
+
+  expandedRow.innerHTML = analysis.focusTerms
+    .slice(0, 8)
+    .map((term) => `<span class="analysis-chip">Focus: ${escapeHtml(term)}</span>`)
+    .join("");
+
+  analysisSummary.append(card);
+};
+
 const renderEmptyState = (message) => {
   results.innerHTML = `<div class="empty-state">${message}</div>`;
   resultCount.textContent = "0 matches";
@@ -84,7 +124,7 @@ const renderResults = (matches) => {
 
   if (!matches.length) {
     renderEmptyState(
-      "No excerpt met the current threshold. Try a broader query, lower the matching-terms slider, or remove the subject filter."
+      "No evidence matched the analyzed question yet. Try broadening the question, removing a source filter, or using fewer quoted phrases."
     );
     return;
   }
@@ -92,8 +132,10 @@ const renderResults = (matches) => {
   matches.forEach((match) => {
     const fragment = resultTemplate.content.cloneNode(true);
     fragment.querySelector(".subject-pill").textContent = match.subject;
-    fragment.querySelector(".phrase-pill").textContent = match.phraseMatch ? "Exact phrase" : "Related evidence";
-    fragment.querySelector(".score-pill").textContent = `${match.matchCount} matched terms`;
+    fragment.querySelector(".phrase-pill").textContent = match.exactPhraseMatch ? "Quoted phrase hit" : "Contextual match";
+    fragment.querySelector(".concept-pill").textContent =
+      match.conceptHits.length ? `${match.conceptHits.length} concept hits` : "Question analysis";
+    fragment.querySelector(".score-pill").textContent = `${match.score} relevance`;
     fragment.querySelector(".result-title").textContent = match.title;
     fragment.querySelector(".result-meta").textContent =
       `${match.author} | ${match.year} | Page ${match.page} | ${match.sourceId}`;
@@ -108,6 +150,24 @@ const renderResults = (matches) => {
     });
 
     results.append(fragment);
+  });
+};
+
+const renderJobs = (jobs) => {
+  jobList.innerHTML = "";
+
+  jobs.slice(0, 6).forEach((job) => {
+    const fragment = jobTemplate.content.cloneNode(true);
+    fragment.querySelector(".job-name").textContent = job.filename;
+    fragment.querySelector(".job-summary").textContent =
+      job.pageCount
+        ? `${job.pagesProcessed}/${job.pageCount} pages processed | ${job.excerptCount} excerpts`
+        : "Waiting to start processing";
+    fragment.querySelector(".job-status-line").textContent =
+      job.status === "failed"
+        ? `Status: failed | ${job.error}`
+        : `Status: ${job.status} | ${job.ingestionStatus}`;
+    jobList.append(fragment);
   });
 };
 
@@ -128,20 +188,34 @@ const renderUploads = (sources) => {
 };
 
 const refreshCollection = async () => {
-  const [statsResponse, subjectsResponse, sourcesResponse] = await Promise.all([
+  const [statsResponse, subjectsResponse, sourcesResponse, jobsResponse] = await Promise.all([
     fetch("/api/stats"),
     fetch("/api/subjects"),
-    fetch("/api/sources")
+    fetch("/api/sources"),
+    fetch("/api/jobs")
   ]);
 
   const statsPayload = await statsResponse.json();
   const subjectsPayload = await subjectsResponse.json();
   const sourcesPayload = await sourcesResponse.json();
+  const jobsPayload = await jobsResponse.json();
 
   renderStats(statsPayload);
   renderSubjects(subjectsPayload.subjects);
   renderSources(sourcesPayload.sources);
+  renderJobs(jobsPayload.jobs);
   renderUploads(sourcesPayload.sources);
+
+  const activeJobs = jobsPayload.jobs.some((job) => job.status === "queued" || job.status === "processing");
+  if (activeJobs && !pollHandle) {
+    pollHandle = setInterval(() => {
+      refreshCollection().catch(() => {});
+    }, 3000);
+  }
+  if (!activeJobs && pollHandle) {
+    clearInterval(pollHandle);
+    pollHandle = null;
+  }
 };
 
 const searchEvidence = async () => {
@@ -156,9 +230,7 @@ const searchEvidence = async () => {
   const params = new URLSearchParams({
     q: query,
     subject: subjectFilter.value,
-    sourceId: sourceFilter.value,
-    minTerms: minScoreInput.value,
-    phraseOnly: phraseOnlyInput.checked ? "1" : "0"
+    sourceId: sourceFilter.value
   });
 
   const response = await fetch(`/api/search?${params.toString()}`);
@@ -168,10 +240,10 @@ const searchEvidence = async () => {
     throw new Error(payload.error || "Search failed.");
   }
 
-  statusMessage.textContent =
-    phraseOnlyInput.checked
-      ? "Search completed in exact-phrase mode. Only literal phrase hits from indexed excerpts are shown."
-      : "Search completed across the persistent evidence database. Results show exact citations only; no synthesized answer is produced.";
+  renderAnalysis(payload.analysis);
+  statusMessage.textContent = payload.analysis.exactPhrases.length
+    ? "Search completed with quoted exact-phrase constraints plus question analysis."
+    : "Search completed with question analysis. Results are ranked by concept and context evidence, not naive word overlap alone.";
   renderResults(payload.results);
 };
 
@@ -198,15 +270,12 @@ const handleUpload = async (event) => {
     throw new Error(payload.error || "Upload failed.");
   }
 
-  const indexedCount = payload.uploaded.reduce((sum, item) => sum + item.excerptCount, 0);
-  const ocrCount = payload.uploaded.filter((item) => item.ingestionStatus === "needs_ocr").length;
   uploadStatus.textContent =
-    ocrCount > 0
-      ? `Upload complete. Added ${indexedCount} excerpts. ${ocrCount} source${ocrCount === 1 ? "" : "s"} still need OCR.`
-      : `Upload complete. Added ${indexedCount} excerpts to the persistent evidence database.`;
+    `Upload accepted. ${payload.jobs.length} file${payload.jobs.length === 1 ? "" : "s"} queued for background processing. You can keep using the app while large books ingest.`;
 
   uploadForm.reset();
   renderStats(payload.stats);
+  renderJobs(payload.jobs);
   await refreshCollection();
 };
 
@@ -221,11 +290,6 @@ uploadForm.addEventListener("submit", (event) => {
   handleUpload(event).catch((error) => {
     uploadStatus.textContent = error.message;
   });
-});
-
-minScoreInput.addEventListener("input", () => {
-  const value = Number(minScoreInput.value);
-  minScoreLabel.textContent = `${value} matching ${value === 1 ? "term" : "terms"}`;
 });
 
 loadExampleButton.addEventListener("click", () => {

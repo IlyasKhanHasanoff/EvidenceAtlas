@@ -1,7 +1,8 @@
 import json
 import re
-import shutil
 import sqlite3
+import threading
+import uuid
 from collections import defaultdict
 from datetime import datetime
 from email import policy
@@ -22,10 +23,35 @@ DB_PATH = DATA_DIR / "evidence.sqlite"
 SAMPLE_PATH = DATA_DIR / "books.json"
 
 STOP_WORDS = {
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "is", "it",
-    "of", "on", "or", "that", "the", "there", "this", "to", "was", "what", "when", "where",
-    "which", "who", "why", "with"
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "into", "is",
+    "it", "of", "on", "or", "regarding", "show", "that", "the", "there", "this", "to", "was",
+    "what", "when", "where", "which", "who", "why", "with", "evidence", "find", "about", "tell",
+    "me"
 }
+
+RELATED_TERMS = {
+    "abolition": ["freedom", "slavery", "enslaved"],
+    "city": ["cities", "urban", "municipal"],
+    "disease": ["illness", "mortality", "health"],
+    "education": ["school", "schools", "learning"],
+    "factory": ["industrial", "industry", "manufacturing"],
+    "food": ["meat", "inspection", "packing"],
+    "housing": ["tenement", "tenements", "slum", "slums"],
+    "industrial": ["factory", "factories", "industry", "manufacturing"],
+    "inspection": ["inspectors", "oversight", "regulation"],
+    "law": ["legal", "statute", "legislation"],
+    "poverty": ["poor", "slum", "slums", "tenement"],
+    "public": ["municipal", "civic"],
+    "reform": ["reforms", "improvement", "improvements", "change", "inspection", "administration"],
+    "sanitary": ["sanitation", "drainage", "sewer", "sewers", "filth", "water"],
+    "sanitation": ["sanitary", "drainage", "sewer", "sewers", "filth", "water", "ventilation"],
+    "slavery": ["enslaved", "abolition", "freedom"],
+    "urban": ["city", "cities", "municipal"],
+    "water": ["drainage", "sewer", "sewers"],
+}
+
+JOB_LOCK = threading.Lock()
+INGESTION_JOBS = {}
 
 
 def tokenize(text: str) -> list[str]:
@@ -41,6 +67,21 @@ def normalize_whitespace(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+def normalize_term(term: str) -> str:
+    term = term.lower().strip()
+    if len(term) > 5 and term.endswith("ies"):
+        return term[:-3] + "y"
+    if len(term) > 4 and term.endswith("ing"):
+        return term[:-3]
+    if len(term) > 3 and term.endswith("ed"):
+        return term[:-2]
+    if len(term) > 4 and term.endswith("es"):
+        return term[:-2]
+    if len(term) > 3 and term.endswith("s"):
+        return term[:-1]
+    return term
+
+
 def derive_keywords(text: str) -> list[str]:
     return unique(tokenize(text))[:12]
 
@@ -48,7 +89,7 @@ def derive_keywords(text: str) -> list[str]:
 def split_into_excerpt_chunks(text: str) -> list[str]:
     cleaned = normalize_whitespace(text)
     if not cleaned:
-      return []
+        return []
 
     sentences = re.split(r"(?<=[.!?])\s+", cleaned)
     chunks = []
@@ -56,7 +97,7 @@ def split_into_excerpt_chunks(text: str) -> list[str]:
 
     for sentence in sentences:
         candidate = f"{current} {sentence}".strip() if current else sentence
-        if len(candidate) <= 420:
+        if len(candidate) <= 560:
             current = candidate
             continue
         if current:
@@ -230,13 +271,169 @@ def list_sources():
     ]
 
 
-def search(query: str, subject: str, source_id: str, min_terms: int, phrase_only: bool):
-    normalized_query = query.strip()
-    if not normalized_query:
-        return []
+def list_jobs():
+    with JOB_LOCK:
+        jobs = list(INGESTION_JOBS.values())
+    return sorted(jobs, key=lambda item: item["createdAt"], reverse=True)
 
-    query_tokens = unique(tokenize(normalized_query))
-    lowered_query = normalized_query.lower()
+
+def get_job(job_id: str):
+    with JOB_LOCK:
+        job = INGESTION_JOBS.get(job_id)
+        return dict(job) if job else None
+
+
+def update_job(job_id: str, **updates):
+    with JOB_LOCK:
+        if job_id not in INGESTION_JOBS:
+            return
+        INGESTION_JOBS[job_id].update(updates)
+
+
+def create_job(filename: str, subject: str):
+    job_id = uuid.uuid4().hex
+    job = {
+        "jobId": job_id,
+        "filename": filename,
+        "subject": subject or "Uploaded Evidence",
+        "status": "queued",
+        "createdAt": datetime.utcnow().isoformat(),
+        "pageCount": 0,
+        "pagesProcessed": 0,
+        "excerptCount": 0,
+        "sourceId": None,
+        "error": None,
+        "ingestionStatus": "queued",
+    }
+    with JOB_LOCK:
+        INGESTION_JOBS[job_id] = job
+    return job
+
+
+def extract_quoted_phrases(query: str) -> list[str]:
+    return [normalize_whitespace(match) for match in re.findall(r'"([^"]+)"', query) if normalize_whitespace(match)]
+
+
+def remove_quoted_content(query: str) -> str:
+    return re.sub(r'"[^"]+"', " ", query)
+
+
+def build_concept_phrases(tokens: list[str]) -> list[str]:
+    phrases = []
+    for size in (3, 2):
+        for index in range(len(tokens) - size + 1):
+            phrase = " ".join(tokens[index:index + size])
+            if phrase not in phrases:
+                phrases.append(phrase)
+    return phrases[:6]
+
+
+def analyze_question(query: str):
+    exact_phrases = extract_quoted_phrases(query)
+    unquoted = remove_quoted_content(query)
+    raw_tokens = tokenize(unquoted)
+    normalized_terms = unique([normalize_term(token) for token in raw_tokens if len(token) > 2])
+    concept_phrases = build_concept_phrases(raw_tokens)
+
+    expanded_terms = set(normalized_terms)
+    for term in normalized_terms:
+        expanded_terms.update(RELATED_TERMS.get(term, []))
+
+    return {
+        "originalQuery": query,
+        "exactPhrases": exact_phrases,
+        "focusTerms": normalized_terms[:10],
+        "expandedTerms": sorted(expanded_terms)[:24],
+        "conceptPhrases": concept_phrases,
+        "mode": "quoted-exact" if exact_phrases else "analyzed",
+    }
+
+
+def token_positions(tokens: list[str]):
+    positions = defaultdict(list)
+    for index, token in enumerate(tokens):
+        positions[normalize_term(token)].append(index)
+    return positions
+
+
+def concept_present(phrase: str, positions_map, window: int = 10):
+    phrase_terms = [normalize_term(term) for term in tokenize(phrase)]
+    if not phrase_terms:
+        return False
+    if not all(term in positions_map for term in phrase_terms):
+        return False
+
+    anchor_positions = positions_map[phrase_terms[0]]
+    for anchor in anchor_positions:
+        if all(any(abs(pos - anchor) <= window for pos in positions_map[term]) for term in phrase_terms[1:]):
+            return True
+    return False
+
+
+def score_excerpt(row, analysis):
+    source_ref, title, author, year, subject, page, excerpt, keywords_json = row
+    keywords = json.loads(keywords_json or "[]")
+    full_text = " ".join([title, author, subject, excerpt, *keywords])
+    raw_tokens = re.findall(r"[a-z0-9]+", full_text.lower())
+    normalized_tokens = [normalize_term(token) for token in raw_tokens]
+    normalized_set = set(normalized_tokens)
+    positions_map = token_positions(raw_tokens)
+
+    exact_phrase_hits = []
+    for phrase in analysis["exactPhrases"]:
+        lowered_phrase = normalize_whitespace(phrase.lower())
+        if lowered_phrase in normalize_whitespace(excerpt.lower()) or lowered_phrase in normalize_whitespace(title.lower()):
+            exact_phrase_hits.append(phrase)
+
+    if analysis["exactPhrases"] and len(exact_phrase_hits) != len(analysis["exactPhrases"]):
+        return None
+
+    exact_term_hits = [term for term in analysis["focusTerms"] if term in normalized_set]
+    expanded_hits = [term for term in analysis["expandedTerms"] if term in normalized_set and term not in exact_term_hits]
+    concept_hits = [phrase for phrase in analysis["conceptPhrases"] if concept_present(phrase, positions_map)]
+
+    title_text = f"{title} {author} {subject}".lower()
+    title_focus_hits = [term for term in analysis["focusTerms"] if term in title_text]
+
+    score = 0
+    score += len(exact_phrase_hits) * 120
+    score += len(concept_hits) * 22
+    score += len(exact_term_hits) * 8
+    score += len(expanded_hits[:6]) * 3
+    score += len(title_focus_hits) * 10
+
+    if score <= 0:
+        return None
+
+    match_labels = []
+    match_labels.extend([f'"{phrase}"' for phrase in exact_phrase_hits])
+    match_labels.extend(concept_hits[:4])
+    match_labels.extend(exact_term_hits[:6])
+    if not match_labels:
+        match_labels.extend(expanded_hits[:4])
+
+    return {
+        "sourceId": source_ref,
+        "title": title,
+        "author": author,
+        "year": year,
+        "subject": subject,
+        "page": int(page),
+        "excerpt": excerpt,
+        "matches": unique(match_labels),
+        "matchCount": len(unique(match_labels)),
+        "score": score,
+        "exactPhraseMatch": bool(exact_phrase_hits),
+        "conceptHits": concept_hits,
+        "focusHits": exact_term_hits,
+    }
+
+
+def search(query: str, subject: str, source_id: str):
+    normalized_query = query.strip()
+    analysis = analyze_question(normalized_query)
+    if not normalized_query:
+        return {"analysis": analysis, "results": []}
 
     with connect() as conn:
         if subject and source_id:
@@ -280,32 +477,12 @@ def search(query: str, subject: str, source_id: str, min_terms: int, phrase_only
 
     matches = []
     for row in rows:
-        keywords = json.loads(row[7] or "[]")
-        combined = set(tokenize(" ".join([row[1], row[2], row[4], row[6], *keywords])))
-        matched_terms = [token for token in query_tokens if token in combined]
-        phrase_match = lowered_query in row[6].lower() or lowered_query in row[1].lower()
+        scored = score_excerpt(row, analysis)
+        if scored:
+            matches.append(scored)
 
-        if phrase_only and not phrase_match:
-            continue
-        if len(matched_terms) < min_terms:
-            continue
-
-        matches.append(
-            {
-                "sourceId": row[0],
-                "title": row[1],
-                "author": row[2],
-                "year": row[3],
-                "subject": row[4],
-                "page": int(row[5]),
-                "excerpt": row[6],
-                "matches": matched_terms,
-                "matchCount": len(matched_terms),
-                "phraseMatch": phrase_match,
-            }
-        )
-
-    return sorted(matches, key=lambda item: (-int(item["phraseMatch"]), -item["matchCount"], item["page"]))
+    matches.sort(key=lambda item: (-item["score"], -int(item["exactPhraseMatch"]), item["page"]))
+    return {"analysis": analysis, "results": matches[:50]}
 
 
 def safe_filename(name: str) -> str:
@@ -346,7 +523,7 @@ def parse_multipart_form_data(headers, body: bytes):
     return fields, files
 
 
-def ingest_pdf(file_path: Path, original_name: str, subject: str, author: str, year: str):
+def ingest_pdf(file_path: Path, original_name: str, subject: str, author: str, year: str, progress_callback=None):
     reader = PdfReader(str(file_path))
     title = re.sub(r"\.pdf$", "", original_name, flags=re.IGNORECASE)
     normalized_subject = subject or "Uploaded Evidence"
@@ -354,6 +531,10 @@ def ingest_pdf(file_path: Path, original_name: str, subject: str, author: str, y
     normalized_year = year or str(datetime.utcnow().year)
     source_id = f"SRC-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
     excerpt_records = []
+    total_pages = len(reader.pages)
+
+    if progress_callback:
+        progress_callback(0, total_pages, 0, "processing")
 
     for page_number, page in enumerate(reader.pages, start=1):
         text = normalize_whitespace(page.extract_text() or "")
@@ -371,6 +552,8 @@ def ingest_pdf(file_path: Path, original_name: str, subject: str, author: str, y
                     "keywords": derive_keywords(chunk),
                 }
             )
+        if progress_callback:
+            progress_callback(page_number, total_pages, len(excerpt_records), "processing")
 
     ingestion_status = "indexed" if excerpt_records else "needs_ocr"
 
@@ -420,16 +603,47 @@ def ingest_pdf(file_path: Path, original_name: str, subject: str, author: str, y
             )
         conn.commit()
 
+    if progress_callback:
+        progress_callback(total_pages, total_pages, len(excerpt_records), "completed")
+
     return {
         "sourceId": source_id,
         "title": title,
         "subject": normalized_subject,
         "author": normalized_author,
         "year": normalized_year,
-        "pageCount": len(reader.pages),
+        "pageCount": total_pages,
         "excerptCount": len(excerpt_records),
         "ingestionStatus": ingestion_status
     }
+
+
+def process_job(job_id: str, file_path: Path, original_name: str, subject: str, author: str, year: str):
+    try:
+        update_job(job_id, status="processing", ingestionStatus="processing")
+
+        def progress_callback(processed_pages, total_pages, excerpt_count, status):
+            update_job(
+                job_id,
+                status=status,
+                ingestionStatus=status,
+                pagesProcessed=processed_pages,
+                pageCount=total_pages,
+                excerptCount=excerpt_count,
+            )
+
+        result = ingest_pdf(file_path, original_name, subject, author, year, progress_callback=progress_callback)
+        update_job(
+            job_id,
+            status="completed",
+            ingestionStatus=result["ingestionStatus"],
+            pageCount=result["pageCount"],
+            pagesProcessed=result["pageCount"],
+            excerptCount=result["excerptCount"],
+            sourceId=result["sourceId"],
+        )
+    except Exception as error:
+        update_job(job_id, status="failed", ingestionStatus="failed", error=str(error))
 
 
 class EvidenceHandler(BaseHTTPRequestHandler):
@@ -481,16 +695,31 @@ class EvidenceHandler(BaseHTTPRequestHandler):
             self._send_json({"sources": list_sources()})
             return
 
+        if path_name == "/api/jobs":
+            self._send_json({"jobs": list_jobs()})
+            return
+
+        if path_name.startswith("/api/jobs/"):
+            job_id = path_name.rsplit("/", 1)[-1]
+            job = get_job(job_id)
+            if not job:
+                self._send_json({"error": "Job not found."}, status=HTTPStatus.NOT_FOUND)
+                return
+            self._send_json(job)
+            return
+
         if path_name == "/api/search":
             query = parse_qs(parsed.query)
             payload = search(
                 query.get("q", [""])[0],
                 query.get("subject", [""])[0],
                 query.get("sourceId", [""])[0],
-                int(query.get("minTerms", ["2"])[0]),
-                query.get("phraseOnly", ["0"])[0] == "1",
             )
-            self._send_json({"resultCount": len(payload), "results": payload})
+            self._send_json({
+                "resultCount": len(payload["results"]),
+                "analysis": payload["analysis"],
+                "results": payload["results"],
+            })
             return
 
         target = PUBLIC_DIR / ("index.html" if path_name == "/" else path_name.lstrip("/"))
@@ -514,16 +743,31 @@ class EvidenceHandler(BaseHTTPRequestHandler):
         subject = fields.get("subject", "").strip()
         author = fields.get("author", "").strip()
         year = fields.get("year", "").strip()
-        uploaded = []
+        jobs = []
 
         for item in file_items:
             original_name = safe_filename(Path(item["filename"]).name)
             destination = UPLOADS_DIR / f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{original_name}"
             with destination.open("wb") as output_file:
                 output_file.write(item["content"])
-            uploaded.append(ingest_pdf(destination, original_name, subject, author, year))
 
-        self._send_json({"uploaded": uploaded, "stats": get_stats()}, status=HTTPStatus.CREATED)
+            job = create_job(original_name, subject)
+            jobs.append(job)
+            worker = threading.Thread(
+                target=process_job,
+                args=(job["jobId"], destination, original_name, subject, author, year),
+                daemon=True,
+            )
+            worker.start()
+
+        self._send_json(
+            {
+                "jobs": jobs,
+                "stats": get_stats(),
+                "message": "Files uploaded. Ingestion is running in the background."
+            },
+            status=HTTPStatus.ACCEPTED
+        )
 
 
 def main():

@@ -9,7 +9,9 @@ Evidence Atlas is a retrieval-only evidence finder for scanned books. It stores 
 - Accepts PDF uploads through the web UI and stores them on the server.
 - Extracts page text from text-based PDFs and creates page-level excerpt records.
 - Marks image-only scans as `needs_ocr` instead of pretending they were searchable.
-- Supports exact-phrase mode and source-specific filtering for tighter citation lookup.
+- Analyzes the user’s question into focus terms and concepts before searching.
+- Uses quoted words or phrases as exact constraints only when the user includes quotation marks.
+- Supports source-specific filtering for tighter citation lookup.
 - Returns exact excerpts, page numbers, source IDs, and metadata.
 - Avoids generative answers, summaries, and suggestions.
 
@@ -35,9 +37,9 @@ To stop the local background server, run [stop-local.ps1](C:\Users\hasan\Documen
 
 ## Search behavior
 
-- Search uses term overlap only.
-- Search can also require exact phrase hits.
-- Results are ranked by exact-phrase hit first, then matched term count, then page number.
+- Search is based on question analysis, concept phrases, focus terms, and contextual relevance.
+- Quoted words or phrases are treated as exact requirements.
+- Results are ranked by quoted phrase hits, concept hits, focus-term hits, and page position.
 - Every result is shown as an exact excerpt with citation metadata.
 - The UI does not generate narrative answers.
 
@@ -46,8 +48,9 @@ To stop the local background server, run [stop-local.ps1](C:\Users\hasan\Documen
 1. Choose one or more PDF files in the upload panel.
 2. Optionally provide subject, author, or year overrides.
 3. The server stores each PDF in `uploads/`.
-4. Text-based PDFs are parsed into excerpt records and written to the database.
-5. PDFs without extractable text are saved and flagged as `needs_ocr`.
+4. Ingestion runs in the background, so large book PDFs can keep processing while you continue using the site.
+5. Text-based PDFs are parsed into excerpt records and written to the database.
+6. PDFs without extractable text are saved and flagged as `needs_ocr`.
 
 ## Important limitation
 

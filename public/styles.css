@@ -139,7 +139,8 @@ h1 {
 .upload-list,
 .field,
 .results-list,
-.match-tags {
+.match-tags,
+.analysis-summary {
   display: grid;
   gap: 14px;
 }
@@ -155,14 +156,9 @@ h1 {
   font-weight: 700;
 }
 
-.checkbox-field {
-  align-content: start;
-}
-
-.checkbox-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
+.analysis-help {
+  display: grid;
+  gap: 8px;
   min-height: 58px;
   border: 1px solid rgba(81, 57, 34, 0.16);
   border-radius: var(--radius-md);
@@ -170,20 +166,14 @@ h1 {
   padding: 16px 18px;
 }
 
-.checkbox-row strong {
+.analysis-help strong {
   font-size: 0.95rem;
 }
 
 textarea,
 select,
-input[type="text"],
-input[type="range"] {
-  width: 100%;
-}
-
-textarea,
-select,
 input[type="text"] {
+  width: 100%;
   border: 1px solid rgba(81, 57, 34, 0.16);
   border-radius: var(--radius-md);
   background: var(--paper-strong);
@@ -256,6 +246,7 @@ button:hover {
   gap: 14px;
 }
 
+.analysis-card,
 .stat-card,
 .upload-item {
   padding: 16px;
@@ -274,6 +265,27 @@ button:hover {
 .upload-item span {
   color: var(--muted);
   font-size: 0.92rem;
+}
+
+.analysis-card strong,
+.analysis-chip-row {
+  display: block;
+}
+
+.analysis-chip-row {
+  margin-top: 10px;
+}
+
+.analysis-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 8px 12px;
+  margin: 6px 8px 0 0;
+  background: rgba(31, 26, 23, 0.06);
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 800;
 }
 
 .upload-dropzone {
@@ -336,6 +348,7 @@ button:hover {
 
 .subject-pill,
 .phrase-pill,
+.concept-pill,
 .score-pill,
 .match-tag {
   display: inline-flex;
@@ -351,12 +364,17 @@ button:hover {
   color: #44511f;
 }
 
-.score-pill {
-  background: var(--accent-soft);
+.phrase-pill {
+  background: rgba(157, 60, 36, 0.1);
   color: var(--accent-deep);
 }
 
-.phrase-pill {
+.concept-pill {
+  background: rgba(93, 107, 45, 0.12);
+  color: #44511f;
+}
+
+.score-pill {
   background: rgba(31, 26, 23, 0.08);
   color: var(--ink);
 }
