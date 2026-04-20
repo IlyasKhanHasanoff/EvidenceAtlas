@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 from pypdf import PdfReader
 
+from evidence_engine import answer_question
 
 ROOT = Path(__file__).parent
 DOCS_DIR = ROOT / "docs"
@@ -456,6 +457,23 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/answer":
+            fields = parse_json_body(self)
+            query = fields.get("query", "").strip()
+            if not query:
+                self._send_json({"error": "Enter a question first."}, status=HTTPStatus.BAD_REQUEST)
+                return
+
+            self._send_json(
+                answer_question(
+                    query,
+                    subject=fields.get("subject", "").strip(),
+                    sub_subject=fields.get("subSubject", "").strip(),
+                    source_id=fields.get("sourceId", "").strip(),
+                )
+            )
+            return
+
         if parsed.path != "/api/upload":
             if parsed.path not in {"/api/import-inbox", "/api/import-repo-drop"}:
                 self.send_error(HTTPStatus.NOT_FOUND, "Route not found")

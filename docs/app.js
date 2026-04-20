@@ -5,6 +5,9 @@ const sourceFilter = document.querySelector("#source-filter");
 const statusMessage = document.querySelector("#status-message");
 const stats = document.querySelector("#stats");
 const analysisSummary = document.querySelector("#analysis-summary");
+const answerStatus = document.querySelector("#answer-status");
+const answerCard = document.querySelector("#answer-card");
+const answerCitations = document.querySelector("#answer-citations");
 const results = document.querySelector("#results");
 const resultCount = document.querySelector("#result-count");
 const searchForm = document.querySelector("#search-form");
@@ -21,6 +24,7 @@ const jobList = document.querySelector("#job-list");
 const sourceList = document.querySelector("#source-list");
 const resultTemplate = document.querySelector("#result-template");
 const listCardTemplate = document.querySelector("#list-card-template");
+const citationTemplate = document.querySelector("#citation-template");
 
 const STOP_WORDS = new Set([
   "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "into", "is", "it",
@@ -282,6 +286,24 @@ const renderAnalysis = (analysis) => {
   analysisSummary.append(card);
 };
 
+const renderAnswer = (payload) => {
+  answerStatus.textContent = payload.grounded ? "Answered from cited evidence" : "Insufficient direct evidence";
+  answerCard.innerHTML = `
+    <strong>${escapeHtml(payload.grounded ? "Grounded answer" : "Evidence status")}</strong>
+    <p>${escapeHtml(payload.answer)}</p>
+  `;
+
+  answerCitations.innerHTML = "";
+  (payload.usedCitations || []).forEach((citation) => {
+    const fragment = citationTemplate.content.cloneNode(true);
+    fragment.querySelector(".item-name").textContent = `[${citation.marker}] ${citation.title}`;
+    fragment.querySelector(".item-summary").textContent =
+      `${citation.author} | ${citation.year} | ${citation.subSubject ? `${citation.subject} / ${citation.subSubject}` : citation.subject} | Page ${citation.page}`;
+    fragment.querySelector(".item-detail").textContent = `"${citation.excerpt}"`;
+    answerCitations.append(fragment);
+  });
+};
+
 const renderEmptyState = (message) => {
   results.innerHTML = `<div class="empty-state">${message}</div>`;
   resultCount.textContent = "0 matches";
@@ -403,26 +425,67 @@ const searchEvidence = async () => {
   const query = queryInput.value.trim();
   if (!query) {
     statusMessage.textContent = "Enter a question first. The app only searches the committed library index.";
+    answerStatus.textContent = "Waiting for a question";
+    answerCard.textContent = "The answer panel will respond only from the committed PDF evidence library.";
+    answerCitations.innerHTML = "";
     renderEmptyState("No search has been run yet.");
     return;
   }
 
-  const analysis = analyzeQuestion(query);
-  renderAnalysis(analysis);
+  try {
+    const response = await fetch("/api/answer", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        query,
+        subject: subjectFilter.value,
+        subSubject: subsubjectFilter.value,
+        sourceId: sourceFilter.value
+      })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Answering failed.");
+    }
 
-  const matches = library.records
-    .filter((record) => !subjectFilter.value || record.subject === subjectFilter.value)
-    .filter((record) => !subsubjectFilter.value || normalizeOptionalText(record.subSubject) === subsubjectFilter.value)
-    .filter((record) => !sourceFilter.value || record.sourceRef === sourceFilter.value)
-    .map((record) => scoreRecord(record, analysis))
-    .filter(Boolean)
-    .sort((left, right) => right.score - left.score || left.page - right.page)
-    .slice(0, 50);
+    renderAnalysis(payload.analysis);
+    renderAnswer(payload);
+    renderResults(payload.matches || []);
+    statusMessage.textContent = payload.analysis.exactPhrases.length
+      ? "Answer completed with quoted exact constraints against the shared repo library."
+      : "Answer completed from the shared repo library using analyzed retrieval and cited evidence.";
+    return;
+  } catch (error) {
+    const analysis = analyzeQuestion(query);
+    renderAnalysis(analysis);
+    const matches = library.records
+      .filter((record) => !subjectFilter.value || record.subject === subjectFilter.value)
+      .filter((record) => !subsubjectFilter.value || normalizeOptionalText(record.subSubject) === subsubjectFilter.value)
+      .filter((record) => !sourceFilter.value || record.sourceRef === sourceFilter.value)
+      .map((record) => scoreRecord(record, analysis))
+      .filter(Boolean)
+      .sort((left, right) => right.score - left.score || left.page - right.page)
+      .slice(0, 50);
 
-  statusMessage.textContent = analysis.exactPhrases.length
-    ? "Search completed with quoted exact constraints against the shared repo library."
-    : "Search completed against the shared repo library using question analysis and contextual ranking.";
-  renderResults(matches);
+    renderAnswer({
+      grounded: false,
+      answer: "The answer service is unavailable right now, so only the closest supporting evidence is shown below.",
+      usedCitations: matches.slice(0, 3).map((match, index) => ({
+        marker: index + 1,
+        title: match.title,
+        author: match.author,
+        year: match.year,
+        subject: match.subject,
+        subSubject: match.subSubject,
+        page: match.page,
+        excerpt: match.excerpt
+      }))
+    });
+    statusMessage.textContent = error.message;
+    renderResults(matches);
+  }
 };
 
 const refreshJobs = async () => {
@@ -613,6 +676,11 @@ if ("serviceWorker" in navigator) {
 Promise.all([detectLocalMode(), fetchLibrary()])
   .then(() => {
     renderEmptyState("The shared repo library is ready. Ask a question to retrieve exact excerpts and citations.");
+    renderAnswer({
+      grounded: false,
+      answer: "The answer panel will respond only from the committed PDF evidence library.",
+      usedCitations: []
+    });
     return Promise.all([refreshJobs(), refreshInbox(), refreshRepoDrop()]);
   })
   .catch((error) => {

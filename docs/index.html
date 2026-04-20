@@ -87,6 +87,20 @@
         <div id="analysis-summary" class="analysis-summary"></div>
       </section>
 
+      <section class="panel answer-panel">
+        <div class="results-header">
+          <div>
+            <p class="card-label">Answer</p>
+            <h2>Evidence-grounded answer with citations</h2>
+          </div>
+          <p id="answer-status" class="result-count">Waiting for a question</p>
+        </div>
+        <div id="answer-card" class="analysis-card">
+          The answer panel will respond only from the committed PDF evidence library.
+        </div>
+        <div id="answer-citations" class="results-list"></div>
+      </section>
+
       <section class="panel upload-panel" id="upload-panel">
         <div>
           <p class="card-label">Add Books</p>
@@ -209,6 +223,14 @@
   </template>
 
   <template id="list-card-template">
+    <article class="upload-item">
+      <strong class="item-name"></strong>
+      <span class="item-summary"></span>
+      <span class="item-detail"></span>
+    </article>
+  </template>
+
+  <template id="citation-template">
     <article class="upload-item">
       <strong class="item-name"></strong>
       <span class="item-summary"></span>

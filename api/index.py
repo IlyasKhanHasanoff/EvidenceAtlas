@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 
+from evidence_engine import answer_question
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS_DIR = ROOT / "docs"
@@ -68,6 +69,30 @@ class handler(BaseHTTPRequestHandler):
         self._serve_docs_file(path)
 
     def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/answer":
+            content_length = int(self.headers.get("Content-Length", "0"))
+            raw_body = self.rfile.read(content_length) if content_length > 0 else b"{}"
+            try:
+                payload = json.loads(raw_body.decode("utf-8"))
+            except json.JSONDecodeError:
+                payload = {}
+
+            query = (payload.get("query") or "").strip()
+            if not query:
+                self._send_json({"error": "Enter a question first."}, status=HTTPStatus.BAD_REQUEST)
+                return
+
+            self._send_json(
+                answer_question(
+                    query,
+                    subject=(payload.get("subject") or "").strip(),
+                    sub_subject=(payload.get("subSubject") or "").strip(),
+                    source_id=(payload.get("sourceId") or "").strip(),
+                )
+            )
+            return
+
         self._send_json(
             {
                 "ok": False,
