@@ -46,6 +46,14 @@ Once that is enabled:
 - the shared library loads from `docs/library/index.json`
 - committed PDFs in `docs/library/pdfs/` are available to every visitor
 
+## Use on Vercel
+
+This repo is also ready for Vercel:
+
+- the shared app is served from `docs/`
+- `/api/health` stays read-only on Vercel so the UI does not expose local-only upload behavior
+- local ingestion still happens through `server.py` when you run the project on your own machine
+
 ## Upload behavior
 
 - In local mode, the upload panel is enabled.
