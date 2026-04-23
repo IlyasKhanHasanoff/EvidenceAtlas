@@ -14,18 +14,22 @@ STOP_WORDS = {
     "it", "of", "on", "or", "that", "the", "there", "this", "to", "was", "what", "when", "where",
     "which", "who", "why", "with", "evidence", "find", "about", "tell", "me", "i", "should",
     "say", "says", "said", "saying", "would", "could", "can", "please", "show", "prompt",
-    "question", "statement", "claim", "prove", "proof", "against", "for"
+    "question", "statement", "claim", "prove", "proof", "against", "for",
+    "person", "people", "someone", "man", "woman",
 }
 
 RELATED_TERMS = {
-    "adhan": ["athan", "azan", "call", "prayer"],
+    "adhan": ["athan", "azan", "call", "prayer", "الاذان", "اذان", "الآذان"],
     "aqidah": ["belief", "creed"],
     "hadith": ["hadeeth", "hadis", "narration", "report"],
     "imam": ["leader"],
     "intention": ["niyyah", "niyat", "deed", "actions"],
     "islam": ["muslim", "deen", "faith"],
-    "prayer": ["salah", "salat", "namaz"],
+    "hear": ["hearing", "heard", "يسمع", "سماع", "سمع"],
+    "person": ["man", "woman", "people", "someone", "احد", "شخص"],
+    "prayer": ["salah", "salat", "namaz", "الصلاه", "الصلاة", "صلاه", "صلاة"],
     "quran": ["qur-an", "koran", "revelation", "verse"],
+    "say": ["repeat", "recite", "respond", "يقول", "قال", "قول"],
     "tafsir": ["tafseer", "tefsir", "explanation", "commentary"],
     "wudu": ["wudhu", "ablution"],
 }
@@ -312,6 +316,15 @@ def concept_present(phrase, positions_map, window=16):
     return False
 
 
+def term_variants(term):
+    variants = {normalize_term(term)}
+    for related in RELATED_TERMS.get(term, []):
+        variants.add(normalize_term(related))
+    for variant in VARIANT_EXPANSIONS.get(normalize_term(term), []):
+        variants.add(variant)
+    return {value for value in variants if value}
+
+
 def direction_from_text(text, analysis):
     lowered = text.lower()
     support_hits = [phrase for phrase in analysis.get("supportingConcepts", []) if phrase.lower() in lowered]
@@ -357,7 +370,11 @@ def score_record(record, analysis):
     if analysis["exactPhrases"] and len(exact_phrase_hits) != len(analysis["exactPhrases"]):
         return None
 
-    focus_hits = [term for term in analysis["focusTerms"] if term in normalized_set]
+    focus_hits = [
+        term
+        for term in analysis["focusTerms"]
+        if any(variant in normalized_set for variant in term_variants(term))
+    ]
     expanded_hits = [term for term in analysis["expandedTerms"] if term in normalized_set and term not in focus_hits]
     intent_hits = [term for term in analysis.get("intentTerms", []) if normalize_term(term) in normalized_set]
     concept_hits = [phrase for phrase in analysis["conceptPhrases"] if concept_present(phrase, positions_map)]
@@ -368,9 +385,13 @@ def score_record(record, analysis):
         record.get("subject", ""),
     ])
     title_text_normalized = " ".join(normalize_term(token) for token in tokenize(title_text))
-    title_focus_hits = [term for term in analysis["focusTerms"] if term in title_text_normalized]
+    title_focus_hits = [
+        term
+        for term in analysis["focusTerms"]
+        if any(variant in title_text_normalized for variant in term_variants(term))
+    ]
 
-    if analysis["focusTerms"] and not (focus_hits or exact_phrase_hits or title_focus_hits or concept_hits):
+    if analysis["focusTerms"] and not (focus_hits or expanded_hits or exact_phrase_hits or title_focus_hits or concept_hits):
         return None
 
     direction, support_hits, oppose_hits = direction_from_text(record.get("excerpt", ""), analysis)
