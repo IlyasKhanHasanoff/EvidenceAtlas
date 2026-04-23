@@ -3,12 +3,12 @@
 Evidence Atlas is now a repo-backed app rather than only a local website. The same committed library files power:
 
 - local app mode, where you can add new PDFs into the repo
-- GitHub Pages mode, where anyone with the link can open and search the shared library without uploading anything
+- Vercel mode, where anyone with the link can query the shared evidence index without uploading anything
 
 ## Core model
 
 - Shared library data lives in [docs/library/index.json](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\library\index.json)
-- Shared PDFs live in [docs/library/pdfs](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\library\pdfs)
+- Local repo PDFs live in `library-assets/pdfs/`
 - Shared PDF metadata lives in [docs/library/source-manifest.json](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\docs\library\source-manifest.json)
 - Large local import staging lives in [library-inbox](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\library-inbox)
 - Developer-shared PDF staging lives in [repo-pdf-drop](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\repo-pdf-drop)
@@ -17,9 +17,9 @@ Evidence Atlas is now a repo-backed app rather than only a local website. The sa
 
 ## What changed
 
-- Search is now client-side against the committed library index, so GitHub Pages can serve it.
+- Search is now client-side against the committed library index, so Vercel can serve the app without bundling the raw PDF library.
 - Anyone with the app link can open the shared library immediately with no upload step.
-- Local uploads are copied into the repo library folder so they become part of the shared project content.
+- Local uploads are copied into `library-assets/pdfs/` so they stay in the repo without bloating the Vercel deployment bundle.
 - Large PDFs can be dropped into `library-inbox/` and imported without pushing the whole file through the browser.
 - Shared developer PDFs can be committed into `repo-pdf-drop/` and imported into the library without removing them from that repo folder.
 - Quoted words or phrases are treated as exact constraints; everything else uses question-analysis-based retrieval.
@@ -41,16 +41,6 @@ That will:
 
 To stop the local companion server, run [stop-local.ps1](C:\Users\hasan\Documents\Codex\2026-04-20-build-a-website-that-will-only\stop-local.ps1).
 
-## Use on GitHub
-
-Set GitHub Pages to publish from the `docs/` folder on `main`.
-
-Once that is enabled:
-
-- the app loads from `docs/`
-- the shared library loads from `docs/library/index.json`
-- committed PDFs in `docs/library/pdfs/` are available to every visitor
-
 ## Use on Vercel
 
 This repo is also ready for Vercel:
@@ -59,18 +49,20 @@ This repo is also ready for Vercel:
 - `/api/health` stays read-only on Vercel so the UI does not expose local-only upload behavior
 - `/api/answer` can produce evidence-grounded answers on Vercel too if `OPENAI_API_KEY` is configured in the Vercel project environment
 - local ingestion still happens through `server.py` when you run the project on your own machine
+- raw PDFs are excluded from the Vercel deployment by `.vercelignore`
+- source PDFs should eventually live in object storage if you want them publicly downloadable at scale
 
 ## Upload behavior
 
 - In local mode, the upload panel is enabled.
-- Browser uploads copy PDFs into `docs/library/pdfs/`.
+- Browser uploads copy PDFs into `library-assets/pdfs/`.
 - Large books can be copied into `library-inbox/` first, then imported from the app with one button.
 - Developers can also commit PDFs into `repo-pdf-drop/`, push them, and import them from the app with one button.
-- PDFs already committed into `docs/library/pdfs/` can be indexed from the app using the shared `source-manifest.json`.
+- PDFs already committed into `library-assets/pdfs/` can be indexed from the app using the shared `source-manifest.json`.
 - A background job extracts excerpts and updates `docs/library/index.json`.
 - Each source can carry a `topic` plus an optional `subject`.
 - Duplicate original filenames are skipped so the same book is not imported repeatedly.
-- After that, commit and push the changed library files so GitHub visitors get the new books too.
+- After that, commit and push the changed library files so Vercel visitors get the new indexed evidence too.
 
 ## Answering behavior
 
@@ -81,7 +73,7 @@ This repo is also ready for Vercel:
 
 ## Important constraint
 
-GitHub Pages is static. That means public visitors cannot persist new uploads directly into the repo without an authenticated backend workflow. The supported flow is:
+The public Vercel deployment is intentionally split into a static frontend plus a thin answer API. That means public visitors cannot persist new uploads directly into the repo, and the raw PDF library is not deployed with the site. The supported flow is:
 
 1. Run the app locally
 2. Add missing books

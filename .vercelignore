@@ -1,0 +1,8 @@
+.git
+.venv
+.run-state
+library-assets
+library-inbox
+repo-pdf-drop
+docs/library/pdfs
+data

@@ -20,7 +20,8 @@ from evidence_engine import answer_question
 ROOT = Path(__file__).parent
 DOCS_DIR = ROOT / "docs"
 LIBRARY_DIR = DOCS_DIR / "library"
-PDFS_DIR = LIBRARY_DIR / "pdfs"
+LIBRARY_ASSETS_DIR = ROOT / "library-assets"
+PDFS_DIR = LIBRARY_ASSETS_DIR / "pdfs"
 INBOX_DIR = ROOT / "library-inbox"
 REPO_DROP_DIR = ROOT / "repo-pdf-drop"
 INDEX_PATH = LIBRARY_DIR / "index.json"
@@ -220,6 +221,7 @@ def parse_multipart_form_data(headers, body: bytes):
 def ensure_library_index():
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
     LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
+    LIBRARY_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
     PDFS_DIR.mkdir(parents=True, exist_ok=True)
     INBOX_DIR.mkdir(parents=True, exist_ok=True)
     REPO_DROP_DIR.mkdir(parents=True, exist_ok=True)
@@ -247,6 +249,10 @@ def migrate_library_schema():
         if "originalFilename" not in source:
             source["originalFilename"] = None
             changed = True
+        pdf_path = source.get("pdfPath", "")
+        if isinstance(pdf_path, str) and pdf_path.startswith("./library/pdfs/"):
+            source["pdfPath"] = build_pdf_route(Path(pdf_path).name)
+            changed = True
 
     for record in library.get("records", []):
         if "topic" not in record:
@@ -260,6 +266,10 @@ def migrate_library_schema():
             changed = True
         if "originalFilename" not in record:
             record["originalFilename"] = None
+            changed = True
+        pdf_path = record.get("pdfPath", "")
+        if isinstance(pdf_path, str) and pdf_path.startswith("./library/pdfs/"):
+            record["pdfPath"] = build_pdf_route(Path(pdf_path).name)
             changed = True
 
     if changed:
@@ -310,6 +320,18 @@ def load_source_manifest():
 
 def metadata_for_filename(filename: str):
     return load_source_manifest().get(filename, {})
+
+
+def build_pdf_route(file_name: str) -> str:
+    return f"/library-pdfs/{file_name}"
+
+
+def resolve_pdf_asset(path_name: str):
+    relative = Path(path_name.removeprefix("/library-pdfs/"))
+    target = (PDFS_DIR / relative).resolve()
+    if PDFS_DIR not in target.parents and target != PDFS_DIR:
+        return None
+    return target
 
 
 def chunked(values, size):
@@ -535,7 +557,7 @@ def ingest_pdf_into_library(
                     "page": page_number,
                     "excerpt": chunk,
                     "keywords": derive_keywords(chunk),
-                    "pdfPath": f"./library/pdfs/{file_path.name}",
+                    "pdfPath": build_pdf_route(file_path.name),
                     "originalFilename": original_name,
                 }
             )
@@ -569,7 +591,7 @@ def ingest_pdf_into_library(
                         "page": page_number,
                         "excerpt": chunk,
                         "keywords": derive_keywords(chunk),
-                        "pdfPath": f"./library/pdfs/{file_path.name}",
+                        "pdfPath": build_pdf_route(file_path.name),
                         "originalFilename": original_name,
                     }
                 )
@@ -585,7 +607,7 @@ def ingest_pdf_into_library(
         "year": normalized_year,
         "topic": normalized_topic,
         "subject": normalized_subject,
-        "pdfPath": f"./library/pdfs/{file_path.name}",
+        "pdfPath": build_pdf_route(file_path.name),
         "originalFilename": original_name,
         "ingestionStatus": ingestion_status,
         "ocrUsed": used_ocr,
@@ -693,6 +715,14 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path_name = parsed.path
+
+        if path_name.startswith("/library-pdfs/"):
+            target = resolve_pdf_asset(path_name)
+            if not target:
+                self.send_error(HTTPStatus.BAD_REQUEST, "Invalid PDF path")
+                return
+            self._send_file(target)
+            return
 
         if path_name == "/api/health":
             self._send_json({"ok": True, "mode": "local-app"})

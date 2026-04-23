@@ -3,8 +3,32 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/:path*",
+      "source": "/api/:path*",
       "destination": "/api/index.py"
+    },
+    {
+      "source": "/",
+      "destination": "/docs/index.html"
+    },
+    {
+      "source": "/app.js",
+      "destination": "/docs/app.js"
+    },
+    {
+      "source": "/styles.css",
+      "destination": "/docs/styles.css"
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "destination": "/docs/manifest.webmanifest"
+    },
+    {
+      "source": "/service-worker.js",
+      "destination": "/docs/service-worker.js"
+    },
+    {
+      "source": "/library/:path*",
+      "destination": "/docs/library/:path*"
     }
   ],
   "headers": [

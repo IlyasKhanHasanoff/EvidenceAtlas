@@ -81,6 +81,7 @@ const tokenize = (text) =>
 
 const unique = (values) => [...new Set(values)].sort((left, right) => left.localeCompare(right));
 const normalizeOptionalText = (value) => (value || "").trim();
+const canOpenPdf = (pdfPath) => Boolean(pdfPath) && (localMode || /^https?:\/\//i.test(pdfPath));
 
 const normalizeTerm = (term) => {
   if (term.length > 5 && term.endsWith("ies")) return `${term.slice(0, -3)}y`;
@@ -437,8 +438,10 @@ const renderResults = (matches) => {
     });
 
     const link = fragment.querySelector(".result-link");
-    if (match.pdfPath) {
+    if (canOpenPdf(match.pdfPath)) {
       link.innerHTML = `<a href="${escapeHtml(match.pdfPath)}" target="_blank" rel="noreferrer">Open source PDF</a>`;
+    } else if (match.pdfPath) {
+      link.textContent = "Source PDF is available in local mode or external storage.";
     }
 
     results.append(fragment);
@@ -624,7 +627,7 @@ const refreshLibraryPdfs = async () => {
     fragment.querySelector(".item-name").textContent = file.filename;
     fragment.querySelector(".item-summary").textContent =
       `${Math.max(1, Math.round(file.size / 1024 / 1024))} MB | committed library PDF`;
-    fragment.querySelector(".item-detail").textContent = "Ready to index from docs/library/pdfs";
+    fragment.querySelector(".item-detail").textContent = "Ready to index from library-assets/pdfs";
     libraryPdfList.append(fragment);
   });
 };
@@ -740,7 +743,7 @@ const handleRepoDropImport = async (event) => {
 
 const handleLibraryPdfImport = async (event) => {
   event.preventDefault();
-  uploadStatus.textContent = "Indexing committed PDFs from docs/library/pdfs...";
+  uploadStatus.textContent = "Indexing committed PDFs from library-assets/pdfs...";
 
   const response = await fetch("/api/import-library-pdfs", {
     method: "POST",
