@@ -3,6 +3,7 @@ import json
 import os
 import re
 import threading
+import asyncio
 import uuid
 from datetime import datetime
 from email import policy
@@ -14,6 +15,10 @@ from urllib import request
 from urllib.parse import urlparse
 
 from pypdf import PdfReader, PdfWriter
+try:
+    from vercel.blob import AsyncBlobClient
+except Exception:
+    AsyncBlobClient = None
 
 from evidence_engine import answer_question
 
@@ -39,6 +44,7 @@ STOP_WORDS = {
 }
 
 OCR_BATCH_SIZE = 12
+BLOB_LOCK = threading.Lock()
 
 
 def load_env_from_file():
@@ -326,6 +332,39 @@ def build_pdf_route(file_name: str) -> str:
     return f"/library-pdfs/{file_name}"
 
 
+def blob_enabled() -> bool:
+    load_env_from_file()
+    return bool(os.environ.get("BLOB_READ_WRITE_TOKEN")) and AsyncBlobClient is not None
+
+
+async def upload_pdf_to_blob_async(file_path: Path, original_name: str) -> str | None:
+    if not blob_enabled():
+        return None
+
+    client = AsyncBlobClient()
+    pathname = f"evidence-atlas/pdfs/{safe_filename(original_name)}"
+    blob = await client.put(
+        pathname,
+        file_path.read_bytes(),
+        access="public",
+        add_random_suffix=False,
+        overwrite=True,
+        multipart=True,
+        content_type="application/pdf",
+    )
+    return getattr(blob, "url", None)
+
+
+def upload_pdf_to_blob(file_path: Path, original_name: str) -> str | None:
+    if not blob_enabled():
+        return None
+    with BLOB_LOCK:
+        try:
+            return asyncio.run(upload_pdf_to_blob_async(file_path, original_name))
+        except Exception:
+            return None
+
+
 def resolve_pdf_asset(path_name: str):
     relative = Path(path_name.removeprefix("/library-pdfs/"))
     target = (PDFS_DIR / relative).resolve()
@@ -510,6 +549,24 @@ def upsert_source_and_records(source, records):
     save_library(library)
 
 
+def update_pdf_path_for_source(source_id: str, pdf_path: str):
+    library = load_library()
+    changed = False
+
+    for source in library.get("sources", []):
+        if source.get("sourceId") == source_id:
+            source["pdfPath"] = pdf_path
+            changed = True
+
+    for record in library.get("records", []):
+        if record.get("sourceRef") == source_id:
+            record["pdfPath"] = pdf_path
+            changed = True
+
+    if changed:
+        save_library(library)
+
+
 def ingest_pdf_into_library(
     file_path: Path,
     original_name: str,
@@ -616,6 +673,11 @@ def ingest_pdf_into_library(
 
     upsert_source_and_records(source, records)
 
+    blob_url = upload_pdf_to_blob(file_path, original_name)
+    if blob_url:
+        source["pdfPath"] = blob_url
+        update_pdf_path_for_source(source_id, blob_url)
+
     if progress_callback:
         progress_callback(total_pages, total_pages, len(records), "completed")
 
@@ -678,6 +740,36 @@ def list_unindexed_library_pdfs():
         item for item in list_pdf_files(PDFS_DIR)
         if item["filename"].lower() not in known_files and item["filename"] != ".gitkeep"
     ]
+
+
+def sync_library_pdfs_to_blob():
+    if not blob_enabled():
+        return {"synced": [], "skipped": [], "enabled": False}
+
+    library = load_library()
+    synced = []
+    skipped = []
+
+    for source in library.get("sources", []):
+        filename = source.get("originalFilename")
+        if not filename:
+            skipped.append(source.get("title") or source.get("sourceId"))
+            continue
+        if isinstance(source.get("pdfPath"), str) and source["pdfPath"].startswith("https://"):
+            skipped.append(filename)
+            continue
+        file_path = PDFS_DIR / filename
+        if not file_path.exists():
+            skipped.append(filename)
+            continue
+        blob_url = upload_pdf_to_blob(file_path, filename)
+        if not blob_url:
+            skipped.append(filename)
+            continue
+        update_pdf_path_for_source(source["sourceId"], blob_url)
+        synced.append({"sourceId": source["sourceId"], "filename": filename, "url": blob_url})
+
+    return {"synced": synced, "skipped": skipped, "enabled": True}
 
 
 class AppHandler(BaseHTTPRequestHandler):
@@ -857,6 +949,24 @@ class AppHandler(BaseHTTPRequestHandler):
                     if jobs else "No new committed library PDFs were queued."
                 },
                 status=HTTPStatus.ACCEPTED,
+            )
+            return
+
+        if parsed.path == "/api/sync-blob":
+            result = sync_library_pdfs_to_blob()
+            if not result["enabled"]:
+                self._send_json(
+                    {"error": "BLOB_READ_WRITE_TOKEN is not configured, so Blob sync is unavailable."},
+                    status=HTTPStatus.BAD_REQUEST,
+                )
+                return
+            self._send_json(
+                {
+                    "message": f"Synced {len(result['synced'])} PDF files to Vercel Blob.",
+                    "synced": result["synced"],
+                    "skipped": result["skipped"],
+                    "library": load_library(),
+                }
             )
             return
 

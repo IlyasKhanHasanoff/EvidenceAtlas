@@ -51,6 +51,7 @@ This repo is also ready for Vercel:
 - local ingestion still happens through `server.py` when you run the project on your own machine
 - raw PDFs are excluded from the Vercel deployment by `.vercelignore`
 - source PDFs should eventually live in object storage if you want them publicly downloadable at scale
+- if `BLOB_READ_WRITE_TOKEN` is configured locally, indexed PDFs can be synced to Vercel Blob and the shared index will use those public Blob URLs
 
 ## Upload behavior
 
@@ -59,6 +60,7 @@ This repo is also ready for Vercel:
 - Large books can be copied into `library-inbox/` first, then imported from the app with one button.
 - Developers can also commit PDFs into `repo-pdf-drop/`, push them, and import them from the app with one button.
 - PDFs already committed into `library-assets/pdfs/` can be indexed from the app using the shared `source-manifest.json`.
+- The local app can also sync indexed PDFs to Vercel Blob so the shared deployment can link to them without bundling them.
 - A background job extracts excerpts and updates `docs/library/index.json`.
 - Each source can carry a `topic` plus an optional `subject`.
 - Duplicate original filenames are skipped so the same book is not imported repeatedly.

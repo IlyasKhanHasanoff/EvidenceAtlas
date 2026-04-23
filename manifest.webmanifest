@@ -1,0 +1,9 @@
+{
+  "name": "Evidence Atlas",
+  "short_name": "Evidence Atlas",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4efe6",
+  "theme_color": "#9d3c24",
+  "description": "Grounded evidence app for answering questions and evaluating claims from indexed files."
+}

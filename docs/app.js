@@ -20,6 +20,7 @@ const uploadForm = document.querySelector("#upload-form");
 const inboxForm = document.querySelector("#inbox-form");
 const repoDropForm = document.querySelector("#repo-drop-form");
 const libraryPdfForm = document.querySelector("#library-pdf-form");
+const blobSyncForm = document.querySelector("#blob-sync-form");
 const uploadStatus = document.querySelector("#upload-status");
 const libraryPdfList = document.querySelector("#library-pdf-list");
 const inboxList = document.querySelector("#inbox-list");
@@ -647,6 +648,7 @@ const detectLocalMode = async () => {
     inboxForm.classList.remove("hidden");
     repoDropForm.classList.remove("hidden");
     libraryPdfForm.classList.remove("hidden");
+    blobSyncForm.classList.remove("hidden");
     uploadModeMessage.textContent =
       "Local mode is active. Add a topic, optionally add a subject, then upload directly, import from library-inbox/, index committed library PDFs, or import developer PDFs from repo-pdf-drop/. PDFs without a usable text layer will try OCR during ingestion when an OpenAI key is available.";
   } else {
@@ -654,8 +656,9 @@ const detectLocalMode = async () => {
     inboxForm.classList.add("hidden");
     repoDropForm.classList.add("hidden");
     libraryPdfForm.classList.add("hidden");
+    blobSyncForm.classList.add("hidden");
     uploadModeMessage.textContent =
-      "Shared GitHub mode is read-only. Run locally if you need to add books into the repo library.";
+      "Shared mode is read-only. Run locally if you need to add books into the repo library or sync PDFs to Vercel Blob.";
   }
 };
 
@@ -768,6 +771,27 @@ const handleLibraryPdfImport = async (event) => {
   await Promise.all([fetchLibrary(), refreshJobs(), refreshInbox(), refreshRepoDrop(), refreshLibraryPdfs()]);
 };
 
+const handleBlobSync = async (event) => {
+  event.preventDefault();
+  uploadStatus.textContent = "Syncing indexed PDFs to Vercel Blob...";
+
+  const response = await fetch("/api/sync-blob", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: "{}"
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || "Blob sync failed.");
+  }
+
+  const skipped = payload.skipped?.length ? ` Skipped: ${payload.skipped.length}.` : "";
+  uploadStatus.textContent = `${payload.message}${skipped}`;
+  await fetchLibrary();
+};
+
 searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
   searchEvidence().catch((error) => {
@@ -795,6 +819,12 @@ repoDropForm.addEventListener("submit", (event) => {
 
 libraryPdfForm.addEventListener("submit", (event) => {
   handleLibraryPdfImport(event).catch((error) => {
+    uploadStatus.textContent = error.message;
+  });
+});
+
+blobSyncForm.addEventListener("submit", (event) => {
+  handleBlobSync(event).catch((error) => {
     uploadStatus.textContent = error.message;
   });
 });
