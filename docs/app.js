@@ -84,6 +84,7 @@ const tokenize = (text) =>
 const unique = (values) => [...new Set(values)].sort((left, right) => left.localeCompare(right));
 const normalizeOptionalText = (value) => (value || "").trim();
 const canOpenPdf = (pdfPath) => Boolean(pdfPath) && (localMode || /^https?:\/\//i.test(pdfPath));
+const formatLocator = (item) => item.locatorLabel || (item.page !== undefined && item.page !== null ? `Page ${item.page}` : "Source");
 
 const normalizeTerm = (term) => {
   if (term.length > 5 && term.endsWith("ies")) return `${term.slice(0, -3)}y`;
@@ -355,7 +356,7 @@ const renderAnswer = (payload) => {
       const fragment = citationTemplate.content.cloneNode(true);
       fragment.querySelector(".item-name").textContent = `[${citation.marker}] ${citation.title}`;
       fragment.querySelector(".item-summary").textContent =
-        `${citation.author} | ${citation.year} | ${citation.subject ? `${citation.topic} / ${citation.subject}` : citation.topic} | Page ${citation.page}`;
+        `${citation.author} | ${citation.year} | ${citation.subject ? `${citation.topic} / ${citation.subject}` : citation.topic} | ${formatLocator(citation)}`;
       fragment.querySelector(".item-detail").textContent = `"${citation.excerpt}"`;
       answerCitations.append(fragment);
     });
@@ -427,7 +428,7 @@ const renderResults = (matches) => {
     fragment.querySelector(".score-pill").textContent = `${match.score} evidence score`;
     fragment.querySelector(".result-title").textContent = match.title;
     fragment.querySelector(".result-meta").textContent =
-      `${match.author} | ${match.year} | ${match.subject ? `${match.subject} | ` : ""}Page ${match.page} | ${match.sourceId}`;
+      `${match.author} | ${match.year} | ${match.subject ? `${match.subject} | ` : ""}${formatLocator(match)} | ${match.sourceId}`;
     fragment.querySelector(".excerpt").textContent = `"${match.excerpt}"`;
 
     const tags = fragment.querySelector(".match-tags");

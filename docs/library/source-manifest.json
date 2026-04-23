@@ -1,11 +1,4 @@
 {
-  "Sahih al-Bukhari Vol. 1 - 1-875 English Arabic.pdf": {
-    "topic": "Islam",
-    "subject": "Hadith",
-    "title": "Sahih al-Bukhari Vol. 1",
-    "author": "Imam al-Bukhari",
-    "year": ""
-  },
   "Tafseer-As-Sadi-Volume-1-Juz-1-3.pdf": {
     "topic": "Islam",
     "subject": "Tafsir",
@@ -40,5 +33,13 @@
     "title": "Tafseer As-Sadi Volume 5",
     "author": "Abd al-Rahman al-Sa'di",
     "year": ""
+  },
+  "Sahih Bukhari Without_Tashkel.csv": {
+    "topic": "Islam",
+    "subject": "Hadith",
+    "title": "Sahih Bukhari Dataset",
+    "author": "Imam al-Bukhari",
+    "year": "2022",
+    "sourceType": "hadith-dataset"
   }
 }

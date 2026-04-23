@@ -65,6 +65,8 @@ for group in VARIANT_GROUPS:
     for item in normalized_group:
         VARIANT_EXPANSIONS[item] = sorted(normalized_group)
 
+ARABIC_DIACRITICS_RE = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]")
+
 
 def load_env_from_file():
     if os.environ.get("OPENAI_API_KEY") or not ENV_PATH.exists():
@@ -86,7 +88,35 @@ def unique(values):
     return sorted(set(value for value in values if value))
 
 
+def normalize_arabic(text: str) -> str:
+    text = ARABIC_DIACRITICS_RE.sub("", text or "")
+    text = text.replace("ـ", "")
+    replacements = {
+        "أ": "ا",
+        "إ": "ا",
+        "آ": "ا",
+        "ٱ": "ا",
+        "ؤ": "و",
+        "ئ": "ي",
+        "ى": "ي",
+        "ة": "ه",
+    }
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+    return text
+
+
+def contains_arabic(text: str) -> bool:
+    return any("\u0600" <= char <= "\u06FF" for char in text or "")
+
+
 def normalize_term(term: str) -> str:
+    if contains_arabic(term):
+        compact = normalize_arabic(term.lower())
+        compact = re.sub(r"[^\w\s]", "", compact, flags=re.UNICODE).strip()
+        compact = compact.replace("_", "")
+        return compact
+
     compact = re.sub(r"[^a-z0-9]", "", term.lower())
     if compact in VARIANT_CANONICAL:
         return VARIANT_CANONICAL[compact]
@@ -104,8 +134,16 @@ def normalize_term(term: str) -> str:
 
 
 def tokenize(text: str):
-    cleaned = re.sub(r"[^a-z0-9\s]", " ", (text or "").lower())
-    return [token for token in cleaned.split() if token and token not in STOP_WORDS]
+    normalized = normalize_arabic((text or "").lower())
+    cleaned = re.sub(r"[\W_]+", " ", normalized, flags=re.UNICODE)
+    tokens = []
+    for token in cleaned.split():
+        if not token:
+            continue
+        if token in STOP_WORDS:
+            continue
+        tokens.append(token)
+    return tokens
 
 
 def build_concept_phrases(tokens):
@@ -185,7 +223,8 @@ def call_openai_retrieval_plan(prompt: str, topic="", subject=""):
         "model": model,
         "instructions": (
             "Analyze the user's prompt for evidence retrieval. "
-            "Return strict JSON with keys focusTerms, supportingConcepts, opposingConcepts, variantTerms, intent, and promptMode. "
+            "Return strict JSON with keys focusTerms, supportingConcepts, opposingConcepts, variantTerms, arabicTerms, intent, and promptMode. "
+            "If the user's prompt is in English and the corpus may contain Arabic material, include concise Arabic search terms that would help retrieve matching evidence. "
             "Do not answer the prompt."
         ),
         "input": (
@@ -218,6 +257,7 @@ def call_openai_retrieval_plan(prompt: str, topic="", subject=""):
         "supportingConcepts": [item.strip() for item in parsed.get("supportingConcepts", []) if isinstance(item, str) and item.strip()],
         "opposingConcepts": [item.strip() for item in parsed.get("opposingConcepts", []) if isinstance(item, str) and item.strip()],
         "variantTerms": [normalize_term(item) for item in parsed.get("variantTerms", []) if isinstance(item, str)],
+        "arabicTerms": [normalize_term(item) for item in parsed.get("arabicTerms", []) if isinstance(item, str)],
         "intent": (parsed.get("intent") or "").strip(),
         "promptMode": (parsed.get("promptMode") or "").strip(),
     }
@@ -229,9 +269,9 @@ def merge_analysis(prompt: str, topic="", subject=""):
     if not plan:
         return analysis
 
-    merged_focus = unique(list(analysis["focusTerms"]) + plan["focusTerms"] + plan["variantTerms"])[:16]
+    merged_focus = unique(list(analysis["focusTerms"]) + plan["focusTerms"] + plan["variantTerms"] + plan["arabicTerms"])[:20]
     expanded = set(analysis["expandedTerms"])
-    for term in merged_focus + plan["variantTerms"]:
+    for term in merged_focus + plan["variantTerms"] + plan["arabicTerms"]:
         expanded.add(term)
         for variant in VARIANT_EXPANSIONS.get(term, []):
             expanded.add(variant)
@@ -302,10 +342,11 @@ def score_record(record, analysis):
         record.get("author", ""),
         record.get("topic", ""),
         record.get("subject", ""),
+        record.get("searchText", ""),
         record.get("excerpt", ""),
         " ".join(record.get("keywords", [])),
     ])
-    raw_tokens = re.findall(r"[a-z0-9]+", full_text.lower())
+    raw_tokens = tokenize(full_text)
     normalized_set = {normalize_term(token) for token in raw_tokens}
     positions_map = token_positions(raw_tokens)
 
@@ -325,8 +366,9 @@ def score_record(record, analysis):
         record.get("author", ""),
         record.get("topic", ""),
         record.get("subject", ""),
-    ]).lower()
-    title_focus_hits = [term for term in analysis["focusTerms"] if term in title_text]
+    ])
+    title_text_normalized = " ".join(normalize_term(token) for token in tokenize(title_text))
+    title_focus_hits = [term for term in analysis["focusTerms"] if term in title_text_normalized]
 
     if analysis["focusTerms"] and not (focus_hits or exact_phrase_hits or title_focus_hits or concept_hits):
         return None
@@ -406,6 +448,8 @@ def build_citations(matches):
             "topic": match.get("topic"),
             "subject": match.get("subject"),
             "page": match.get("page"),
+            "locatorLabel": match.get("locatorLabel"),
+            "sourceType": match.get("sourceType"),
             "excerpt": match.get("excerpt"),
             "pdfPath": match.get("pdfPath"),
             "supportHits": match.get("supportHits", []),
@@ -424,6 +468,14 @@ def split_citations(citations):
     return supporting, opposing, related
 
 
+def format_locator(citation):
+    locator_label = (citation.get("locatorLabel") or "").strip()
+    if locator_label:
+        return locator_label
+    page = citation.get("page")
+    return f"page {page}" if page is not None else "this source"
+
+
 def fallback_answer(prompt, citations, analysis):
     supporting, opposing, related = split_citations(citations)
     if not citations:
@@ -440,22 +492,22 @@ def fallback_answer(prompt, citations, analysis):
     if supporting and not opposing:
         lead = supporting[0]
         answer = (
-            f"The strongest evidence in the current library supports the prompt, mainly from {lead['title']} on page "
-            f"{lead['page']} [{lead['marker']}]."
+            f"The strongest evidence in the current library supports the prompt, mainly from {lead['title']} at "
+            f"{format_locator(lead)} [{lead['marker']}]."
         )
         assessment = "mostly-supported"
     elif opposing and not supporting:
         lead = opposing[0]
         answer = (
-            f"The strongest evidence in the current library challenges the prompt, mainly from {lead['title']} on page "
-            f"{lead['page']} [{lead['marker']}]."
+            f"The strongest evidence in the current library challenges the prompt, mainly from {lead['title']} at "
+            f"{format_locator(lead)} [{lead['marker']}]."
         )
         assessment = "mostly-opposed"
     else:
         lead = citations[0]
         answer = (
             f"The current library contains mixed or partial evidence, with the most relevant passage coming from "
-            f"{lead['title']} on page {lead['page']} [{lead['marker']}]."
+            f"{lead['title']} at {format_locator(lead)} [{lead['marker']}]."
         )
         assessment = "mixed"
 
@@ -482,7 +534,7 @@ def call_openai_answer(prompt, citations, analysis):
         evidence_lines.append(
             f"[{citation['marker']}] Direction: {citation['evidenceDirection']} | {citation['title']} | "
             f"{citation['author']} | {citation['year']} | Topic: {citation.get('topic') or 'None'} | "
-            f"Subject: {citation.get('subject') or 'None'} | Page {citation['page']} | Excerpt: {citation['excerpt']}"
+            f"Subject: {citation.get('subject') or 'None'} | Locator: {format_locator(citation)} | Excerpt: {citation['excerpt']}"
         )
 
     payload = {
