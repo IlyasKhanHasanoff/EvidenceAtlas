@@ -21,6 +21,7 @@ const inboxForm = document.querySelector("#inbox-form");
 const repoDropForm = document.querySelector("#repo-drop-form");
 const libraryPdfForm = document.querySelector("#library-pdf-form");
 const blobSyncForm = document.querySelector("#blob-sync-form");
+const blobLinkForm = document.querySelector("#blob-link-form");
 const uploadStatus = document.querySelector("#upload-status");
 const libraryPdfList = document.querySelector("#library-pdf-list");
 const inboxList = document.querySelector("#inbox-list");
@@ -649,6 +650,7 @@ const detectLocalMode = async () => {
     repoDropForm.classList.remove("hidden");
     libraryPdfForm.classList.remove("hidden");
     blobSyncForm.classList.remove("hidden");
+    blobLinkForm.classList.remove("hidden");
     uploadModeMessage.textContent =
       "Local mode is active. Add a topic, optionally add a subject, then upload directly, import from library-inbox/, index committed library PDFs, or import developer PDFs from repo-pdf-drop/. PDFs without a usable text layer will try OCR during ingestion when an OpenAI key is available.";
   } else {
@@ -657,6 +659,7 @@ const detectLocalMode = async () => {
     repoDropForm.classList.add("hidden");
     libraryPdfForm.classList.add("hidden");
     blobSyncForm.classList.add("hidden");
+    blobLinkForm.classList.add("hidden");
     uploadModeMessage.textContent =
       "Shared mode is read-only. Run locally if you need to add books into the repo library or sync PDFs to Vercel Blob.";
   }
@@ -792,6 +795,27 @@ const handleBlobSync = async (event) => {
   await fetchLibrary();
 };
 
+const handleBlobLinkSync = async (event) => {
+  event.preventDefault();
+  uploadStatus.textContent = "Matching indexed PDFs to existing Vercel Blob files...";
+
+  const response = await fetch("/api/pull-blob-links", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: "{}"
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || "Existing Blob link sync failed.");
+  }
+
+  const missing = payload.missing?.length ? ` Missing: ${payload.missing.length}.` : "";
+  uploadStatus.textContent = `${payload.message}${missing}`;
+  await fetchLibrary();
+};
+
 searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
   searchEvidence().catch((error) => {
@@ -825,6 +849,12 @@ libraryPdfForm.addEventListener("submit", (event) => {
 
 blobSyncForm.addEventListener("submit", (event) => {
   handleBlobSync(event).catch((error) => {
+    uploadStatus.textContent = error.message;
+  });
+});
+
+blobLinkForm.addEventListener("submit", (event) => {
+  handleBlobLinkSync(event).catch((error) => {
     uploadStatus.textContent = error.message;
   });
 });

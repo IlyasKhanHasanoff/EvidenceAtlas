@@ -16,9 +16,10 @@ from urllib.parse import urlparse
 
 from pypdf import PdfReader, PdfWriter
 try:
-    from vercel.blob import AsyncBlobClient
+    from vercel.blob import AsyncBlobClient, list_objects
 except Exception:
     AsyncBlobClient = None
+    list_objects = None
 
 from evidence_engine import answer_question
 
@@ -337,6 +338,11 @@ def blob_enabled() -> bool:
     return bool(os.environ.get("BLOB_READ_WRITE_TOKEN")) and AsyncBlobClient is not None
 
 
+def blob_listing_enabled() -> bool:
+    load_env_from_file()
+    return bool(os.environ.get("BLOB_READ_WRITE_TOKEN")) and list_objects is not None
+
+
 async def upload_pdf_to_blob_async(file_path: Path, original_name: str) -> str | None:
     if not blob_enabled():
         return None
@@ -363,6 +369,29 @@ def upload_pdf_to_blob(file_path: Path, original_name: str) -> str | None:
             return asyncio.run(upload_pdf_to_blob_async(file_path, original_name))
         except Exception:
             return None
+
+
+def list_blob_urls_by_filename():
+    if not blob_listing_enabled():
+        return {}
+
+    found = {}
+    cursor = None
+    has_more = True
+
+    while has_more:
+        page = list_objects(cursor=cursor, limit=1000)
+        for item in getattr(page, "blobs", []) or []:
+            pathname = getattr(item, "pathname", "") or ""
+            url = getattr(item, "url", "") or ""
+            if not pathname or not url:
+                continue
+            filename = Path(pathname).name
+            found.setdefault(filename, url)
+        has_more = bool(getattr(page, "has_more", False))
+        cursor = getattr(page, "cursor", None)
+
+    return found
 
 
 def resolve_pdf_asset(path_name: str):
@@ -772,6 +801,47 @@ def sync_library_pdfs_to_blob():
     return {"synced": synced, "skipped": skipped, "enabled": True}
 
 
+def sync_library_index_from_existing_blob():
+    if not blob_listing_enabled():
+        return {"synced": [], "missing": [], "enabled": False}
+
+    blob_urls = list_blob_urls_by_filename()
+    if not blob_urls:
+        return {"synced": [], "missing": [], "enabled": True}
+
+    library = load_library()
+    synced = []
+    missing = []
+    changed = False
+
+    for source in library.get("sources", []):
+        original_name = source.get("originalFilename")
+        if not original_name:
+            continue
+        blob_url = blob_urls.get(original_name)
+        if not blob_url:
+            missing.append(original_name)
+            continue
+        if source.get("pdfPath") == blob_url:
+            continue
+        source["pdfPath"] = blob_url
+        changed = True
+        synced.append({"sourceId": source.get("sourceId"), "filename": original_name, "url": blob_url})
+
+    if synced:
+        source_urls = {item["sourceId"]: item["url"] for item in synced}
+        for record in library.get("records", []):
+            url = source_urls.get(record.get("sourceRef"))
+            if url:
+                record["pdfPath"] = url
+                changed = True
+
+    if changed:
+        save_library(library)
+
+    return {"synced": synced, "missing": missing, "enabled": True}
+
+
 class AppHandler(BaseHTTPRequestHandler):
     def _send_json(self, payload, status=HTTPStatus.OK):
         body = json.dumps(payload).encode("utf-8")
@@ -965,6 +1035,24 @@ class AppHandler(BaseHTTPRequestHandler):
                     "message": f"Synced {len(result['synced'])} PDF files to Vercel Blob.",
                     "synced": result["synced"],
                     "skipped": result["skipped"],
+                    "library": load_library(),
+                }
+            )
+            return
+
+        if parsed.path == "/api/pull-blob-links":
+            result = sync_library_index_from_existing_blob()
+            if not result["enabled"]:
+                self._send_json(
+                    {"error": "BLOB_READ_WRITE_TOKEN is not configured, so Blob link sync is unavailable."},
+                    status=HTTPStatus.BAD_REQUEST,
+                )
+                return
+            self._send_json(
+                {
+                    "message": f"Matched {len(result['synced'])} indexed PDFs to existing Vercel Blob files.",
+                    "synced": result["synced"],
+                    "missing": result["missing"],
                     "library": load_library(),
                 }
             )

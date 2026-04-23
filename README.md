@@ -61,6 +61,7 @@ This repo is also ready for Vercel:
 - Developers can also commit PDFs into `repo-pdf-drop/`, push them, and import them from the app with one button.
 - PDFs already committed into `library-assets/pdfs/` can be indexed from the app using the shared `source-manifest.json`.
 - The local app can also sync indexed PDFs to Vercel Blob so the shared deployment can link to them without bundling them.
+- If PDFs are already in your Blob store, the local app can match them by filename and rewrite the library index to those existing Blob URLs.
 - A background job extracts excerpts and updates `docs/library/index.json`.
 - Each source can carry a `topic` plus an optional `subject`.
 - Duplicate original filenames are skipped so the same book is not imported repeatedly.
