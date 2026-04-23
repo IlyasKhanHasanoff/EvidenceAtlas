@@ -62,7 +62,7 @@ let library = { sources: [], records: [] };
 let pollHandle = null;
 let localMode = false;
 
-const exampleQuery = "What does the library say about intention in hadith?";
+const exampleQuery = "What should a person say when hearing the adhan?";
 
 const escapeHtml = (value) =>
   String(value)
@@ -298,7 +298,7 @@ const renderAnalysis = (analysis) => {
   const card = document.createElement("div");
   card.className = "analysis-card";
   card.innerHTML = `
-    <strong>Question analysis mode: ${escapeHtml(analysis.mode)}</strong>
+    <strong>Prompt mode: ${escapeHtml(analysis.promptMode || analysis.mode)}</strong>
     <div class="analysis-chip-row"></div>
     <div class="analysis-chip-row"></div>
     <div class="analysis-chip-row"></div>
@@ -321,45 +321,108 @@ const renderAnalysis = (analysis) => {
 };
 
 const renderAnswer = (payload) => {
-  answerStatus.textContent = payload.grounded ? "Answered from cited evidence" : "Insufficient direct evidence";
+  const assessmentMap = {
+    "mostly-supported": "Mostly supported",
+    "mostly-opposed": "Mostly opposed",
+    mixed: "Mixed evidence",
+    insufficient: "Insufficient evidence"
+  };
+  answerStatus.textContent = payload.grounded
+    ? (assessmentMap[payload.overallAssessment] || "Grounded response")
+    : "Insufficient direct evidence";
   answerCard.innerHTML = `
-    <strong>${escapeHtml(payload.grounded ? "Grounded answer" : "Evidence status")}</strong>
+    <strong>${escapeHtml(payload.grounded ? "Grounded response" : "Evidence status")}</strong>
     <p>${escapeHtml(payload.answer)}</p>
   `;
 
   answerCitations.innerHTML = "";
-  (payload.usedCitations || []).forEach((citation) => {
-    const fragment = citationTemplate.content.cloneNode(true);
-    fragment.querySelector(".item-name").textContent = `[${citation.marker}] ${citation.title}`;
-    fragment.querySelector(".item-summary").textContent =
-      `${citation.author} | ${citation.year} | ${citation.subject ? `${citation.topic} / ${citation.subject}` : citation.topic} | Page ${citation.page}`;
-    fragment.querySelector(".item-detail").textContent = `"${citation.excerpt}"`;
-    answerCitations.append(fragment);
+  const sections = [
+    { label: "Evidence for", items: payload.supportingEvidence || [] },
+    { label: "Evidence against", items: payload.opposingEvidence || [] },
+    { label: "Most relevant passages", items: payload.usedCitations || [] }
+  ].filter((section) => section.items.length);
+
+  sections.forEach((section) => {
+    const header = document.createElement("p");
+    header.className = "match-label";
+    header.textContent = section.label;
+    answerCitations.append(header);
+
+    section.items.forEach((citation) => {
+      const fragment = citationTemplate.content.cloneNode(true);
+      fragment.querySelector(".item-name").textContent = `[${citation.marker}] ${citation.title}`;
+      fragment.querySelector(".item-summary").textContent =
+        `${citation.author} | ${citation.year} | ${citation.subject ? `${citation.topic} / ${citation.subject}` : citation.topic} | Page ${citation.page}`;
+      fragment.querySelector(".item-detail").textContent = `"${citation.excerpt}"`;
+      answerCitations.append(fragment);
+    });
   });
 };
 
-const renderEmptyState = (message) => {
-  results.innerHTML = `<div class="empty-state">${message}</div>`;
-  resultCount.textContent = "0 matches";
+const renderFallbackAnswer = (matches) => {
+  const supportingEvidence = matches
+    .filter((match) => match.evidenceDirection === "support")
+    .slice(0, 3)
+    .map((match, index) => ({
+      marker: index + 1,
+      title: match.title,
+      author: match.author,
+      year: match.year,
+      topic: match.topic,
+      subject: match.subject,
+      page: match.page,
+      excerpt: match.excerpt
+    }));
+  const opposingEvidence = matches
+    .filter((match) => match.evidenceDirection === "oppose")
+    .slice(0, 3)
+    .map((match, index) => ({
+      marker: supportingEvidence.length + index + 1,
+      title: match.title,
+      author: match.author,
+      year: match.year,
+      topic: match.topic,
+      subject: match.subject,
+      page: match.page,
+      excerpt: match.excerpt
+    }));
+  const usedCitations = [...supportingEvidence, ...opposingEvidence].slice(0, 4);
+
+  renderAnswer({
+    grounded: false,
+    overallAssessment: usedCitations.length ? "mixed" : "insufficient",
+    answer: usedCitations.length
+      ? "The answer service is unavailable right now, but the closest supporting and opposing passages are shown below."
+      : "The answer service is unavailable right now, and no strong passages were retrieved.",
+    supportingEvidence,
+    opposingEvidence,
+    usedCitations
+  });
 };
 
 const renderResults = (matches) => {
   results.innerHTML = "";
-  resultCount.textContent = `${matches.length} ${matches.length === 1 ? "match" : "matches"}`;
+  resultCount.textContent = `${matches.length} ${matches.length === 1 ? "passage" : "passages"}`;
 
   if (!matches.length) {
-    renderEmptyState("No evidence matched the analyzed question yet. Try broadening the question or removing a source filter.");
+    renderEmptyState("No relevant evidence was found yet. Try broadening the prompt or removing a source filter.");
     return;
   }
 
   matches.forEach((match) => {
+    const fragment = citationTemplate.content.cloneNode(true);
+    const directionLabel = match.evidenceDirection === "support"
+      ? "Supports prompt"
+      : match.evidenceDirection === "oppose"
+        ? "Challenges prompt"
+        : "Related evidence";
     const fragment = resultTemplate.content.cloneNode(true);
     fragment.querySelector(".subject-pill").textContent =
       match.subject ? `${match.topic} / ${match.subject}` : match.topic;
-    fragment.querySelector(".phrase-pill").textContent = match.exactPhraseMatch ? "Quoted phrase hit" : "Contextual match";
+    fragment.querySelector(".phrase-pill").textContent = match.exactPhraseMatch ? "Quoted phrase hit" : directionLabel;
     fragment.querySelector(".concept-pill").textContent =
-      match.conceptHits.length ? `${match.conceptHits.length} concept hits` : "Question analysis";
-    fragment.querySelector(".score-pill").textContent = `${match.score} relevance`;
+      match.conceptHits.length ? `${match.conceptHits.length} concept hits` : "Evidence analysis";
+    fragment.querySelector(".score-pill").textContent = `${match.score} evidence score`;
     fragment.querySelector(".result-title").textContent = match.title;
     fragment.querySelector(".result-meta").textContent =
       `${match.author} | ${match.year} | ${match.subject ? `${match.subject} | ` : ""}Page ${match.page} | ${match.sourceId}`;
@@ -380,6 +443,11 @@ const renderResults = (matches) => {
 
     results.append(fragment);
   });
+};
+
+const renderEmptyState = (message) => {
+  results.innerHTML = `<div class="empty-state">${message}</div>`;
+  resultCount.textContent = "0 passages";
 };
 
 const renderJobs = (jobs) => {
@@ -458,9 +526,9 @@ const fetchLibrary = async () => {
 const searchEvidence = async () => {
   const query = queryInput.value.trim();
   if (!query) {
-    statusMessage.textContent = "Enter a question first. The app only searches the committed library index.";
+    statusMessage.textContent = "Enter a prompt, question, or statement first. The app will answer only from the committed library.";
     answerStatus.textContent = "Waiting for a question";
-    answerCard.textContent = "The answer panel will respond only from the committed PDF evidence library.";
+    answerCard.textContent = "The response panel will answer only from the committed PDF evidence library.";
     answerCitations.innerHTML = "";
     renderEmptyState("No search has been run yet.");
     return;
@@ -488,8 +556,8 @@ const searchEvidence = async () => {
     renderAnswer(payload);
     renderResults(payload.matches || []);
     statusMessage.textContent = payload.analysis.exactPhrases.length
-      ? "Answer completed with quoted exact constraints against the shared repo library."
-      : "Answer completed from the shared repo library using analyzed retrieval and cited evidence.";
+      ? "Response completed with quoted exact constraints against the shared repo library."
+      : "Response completed from the shared repo library using evidence analysis.";
     return;
   } catch (error) {
     const analysis = analyzeQuestion(query);
@@ -503,20 +571,7 @@ const searchEvidence = async () => {
       .sort((left, right) => right.score - left.score || left.page - right.page)
       .slice(0, 50);
 
-    renderAnswer({
-      grounded: false,
-      answer: "The answer service is unavailable right now, so only the closest supporting evidence is shown below.",
-      usedCitations: matches.slice(0, 3).map((match, index) => ({
-        marker: index + 1,
-        title: match.title,
-        author: match.author,
-        year: match.year,
-        topic: match.topic,
-        subject: match.subject,
-        page: match.page,
-        excerpt: match.excerpt
-      }))
-    });
+    renderFallbackAnswer(matches);
     statusMessage.textContent = error.message;
     renderResults(matches);
   }
@@ -772,10 +827,13 @@ if ("serviceWorker" in navigator) {
 
 Promise.all([detectLocalMode(), fetchLibrary()])
   .then(() => {
-    renderEmptyState("The shared repo library is ready. Ask a question to retrieve exact excerpts and citations.");
+    renderEmptyState("The shared repo library is ready. Ask a question or test a claim against the evidence.");
     renderAnswer({
       grounded: false,
-      answer: "The answer panel will respond only from the committed PDF evidence library.",
+      overallAssessment: "insufficient",
+      answer: "The response panel will write only from the committed PDF evidence library.",
+      supportingEvidence: [],
+      opposingEvidence: [],
       usedCitations: []
     });
     return Promise.all([refreshJobs(), refreshInbox(), refreshRepoDrop(), refreshLibraryPdfs()]);

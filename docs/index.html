@@ -13,10 +13,10 @@
     <header class="hero">
       <div class="hero-copy">
         <p class="eyebrow">Repo-Backed Evidence App</p>
-        <h1>Search a shared library of cited evidence.</h1>
+        <h1>Ask a question or test a claim against the library.</h1>
         <p class="hero-text">
-          This app reads a repo-committed evidence library. Anyone with the link can search the same indexed books.
-          New PDFs only need to be added when the library does not already contain the source.
+          This app reads a repo-committed library of books and files. A user can ask a question, give a prompt,
+          or state a claim, and the app gathers evidence for and against it before producing a grounded response.
         </p>
       </div>
 
@@ -24,8 +24,9 @@
         <p class="card-label">How It Works</p>
         <ul class="rules-list">
           <li>All shared evidence lives in the repo library</li>
-          <li>Search returns excerpts, pages, and sources only</li>
-          <li>Quoted phrases are treated as exact constraints</li>
+          <li>The app weighs supporting and opposing passages</li>
+          <li>The final response is written from retrieved evidence only</li>
+          <li>Quoted phrases are optional exact constraints</li>
           <li>Local mode can add new books into the repo</li>
         </ul>
       </aside>
@@ -35,11 +36,11 @@
       <section class="panel search-panel">
         <form id="search-form" class="search-form">
           <label class="field">
-            <span>Question</span>
+            <span>Prompt, Question, or Statement</span>
             <textarea
               id="query"
               rows="4"
-              placeholder='Example: What does the library say about intention in hadith? Use quotes only when you want an exact phrase.'
+              placeholder='Example: What should a person say when hearing the adhan? Or: The library supports saying a response to the adhan.'
             ></textarea>
           </label>
 
@@ -71,17 +72,17 @@
           </div>
 
           <div class="actions">
-            <button type="submit" class="primary-button">Ask with evidence</button>
+            <button type="submit" class="primary-button">Analyze with evidence</button>
             <button type="button" id="load-example" class="secondary-button">Load example</button>
           </div>
         </form>
       </section>
 
       <section class="panel status-panel">
-        <div>
-          <p class="card-label">Library Status</p>
-          <h2>One repo-backed library for both local and shared use.</h2>
-        </div>
+          <div>
+            <p class="card-label">Library Status</p>
+            <h2>One shared library, one grounded evidence workflow.</h2>
+          </div>
         <p id="status-message" class="status-message">
           The app is loading the committed library index.
         </p>
@@ -92,13 +93,13 @@
       <section class="panel answer-panel">
         <div class="results-header">
           <div>
-            <p class="card-label">Answer</p>
-            <h2>Evidence-grounded answer with citations</h2>
+            <p class="card-label">Response</p>
+            <h2>Grounded answer from supporting and opposing evidence</h2>
           </div>
           <p id="answer-status" class="result-count">Waiting for a question</p>
         </div>
         <div id="answer-card" class="analysis-card">
-          The answer panel will respond only from the committed PDF evidence library.
+          The response panel will write from the committed PDF evidence library only.
         </div>
         <div id="answer-citations" class="results-list"></div>
       </section>
@@ -209,8 +210,8 @@
       <section class="panel results-panel">
         <div class="results-header">
           <div>
-            <p class="card-label">Results</p>
-            <h2>Exact excerpts from the committed library</h2>
+            <p class="card-label">Evidence</p>
+            <h2>Relevant passages from the committed library</h2>
           </div>
           <p id="result-count" class="result-count">0 matches</p>
         </div>
