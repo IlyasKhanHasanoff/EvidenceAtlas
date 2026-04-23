@@ -1,9 +1,14 @@
 import json
+import mimetypes
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
+from pathlib import Path
 from urllib.parse import urlparse
 
 from evidence_engine import answer_question
+
+ROOT = Path(__file__).resolve().parent.parent
+DOCS_DIR = ROOT / "docs"
 
 
 class handler(BaseHTTPRequestHandler):
@@ -18,9 +23,37 @@ class handler(BaseHTTPRequestHandler):
         body = json.dumps(payload).encode("utf-8")
         self._send_bytes(body, "application/json; charset=utf-8", status=status)
 
+    def _serve_file(self, file_path: Path):
+        if not file_path.exists() or not file_path.is_file():
+            self._send_json({"ok": False, "error": "Route not found."}, status=HTTPStatus.NOT_FOUND)
+            return
+
+        content_type, _ = mimetypes.guess_type(str(file_path))
+        self._send_bytes(file_path.read_bytes(), content_type or "application/octet-stream")
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        static_map = {
+            "/": ROOT / "index.html",
+            "/index.html": ROOT / "index.html",
+            "/manifest.webmanifest": ROOT / "manifest.webmanifest",
+            "/service-worker.js": ROOT / "service-worker.js",
+        }
+
+        if path in static_map:
+            self._serve_file(static_map[path])
+            return
+
+        if path.startswith("/docs/"):
+            self._serve_file((ROOT / path.lstrip("/")).resolve())
+            return
+
+        if path.startswith("/library/"):
+            relative = Path(path.removeprefix("/library/"))
+            self._serve_file((DOCS_DIR / "library" / relative).resolve())
+            return
 
         if path == "/api/health":
             self._send_json({"ok": False, "mode": "shared-app"})
