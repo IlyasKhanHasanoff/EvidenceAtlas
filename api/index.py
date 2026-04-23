@@ -36,8 +36,8 @@ class handler(BaseHTTPRequestHandler):
         path = parsed.path
 
         static_map = {
-            "/": ROOT / "index.html",
-            "/index.html": ROOT / "index.html",
+            "/": DOCS_DIR / "index.html",
+            "/index.html": DOCS_DIR / "index.html",
             "/app.js": DOCS_DIR / "app.js",
             "/styles.css": DOCS_DIR / "styles.css",
             "/manifest.webmanifest": ROOT / "manifest.webmanifest",

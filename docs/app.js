@@ -413,7 +413,6 @@ const renderResults = (matches) => {
   }
 
   matches.forEach((match) => {
-    const fragment = citationTemplate.content.cloneNode(true);
     const directionLabel = match.evidenceDirection === "support"
       ? "Supports prompt"
       : match.evidenceDirection === "oppose"
@@ -447,6 +446,15 @@ const renderResults = (matches) => {
     }
 
     results.append(fragment);
+  });
+};
+
+const bindFormHandler = (element, handler) => {
+  if (!element) return;
+  element.addEventListener("submit", (event) => {
+    handler(event).catch((error) => {
+      uploadStatus.textContent = error.message;
+    });
   });
 };
 
@@ -816,71 +824,54 @@ const handleBlobLinkSync = async (event) => {
   await fetchLibrary();
 };
 
-searchForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  searchEvidence().catch((error) => {
-    statusMessage.textContent = error.message;
+if (searchForm) {
+  searchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    searchEvidence().catch((error) => {
+      statusMessage.textContent = error.message;
+    });
   });
-});
+}
 
-uploadForm.addEventListener("submit", (event) => {
-  handleUpload(event).catch((error) => {
-    uploadStatus.textContent = error.message;
+bindFormHandler(uploadForm, handleUpload);
+bindFormHandler(inboxForm, handleInboxImport);
+bindFormHandler(repoDropForm, handleRepoDropImport);
+bindFormHandler(libraryPdfForm, handleLibraryPdfImport);
+bindFormHandler(blobSyncForm, handleBlobSync);
+bindFormHandler(blobLinkForm, handleBlobLinkSync);
+
+if (topicFilter) {
+  topicFilter.addEventListener("change", () => {
+    renderSubjects();
+    renderSources();
   });
-});
+}
 
-inboxForm.addEventListener("submit", (event) => {
-  handleInboxImport(event).catch((error) => {
-    uploadStatus.textContent = error.message;
+if (subjectFilter) {
+  subjectFilter.addEventListener("change", () => {
+    renderSources();
   });
-});
+}
 
-repoDropForm.addEventListener("submit", (event) => {
-  handleRepoDropImport(event).catch((error) => {
-    uploadStatus.textContent = error.message;
+if (topicSearch) {
+  topicSearch.addEventListener("input", () => {
+    renderTopics();
   });
-});
+}
 
-libraryPdfForm.addEventListener("submit", (event) => {
-  handleLibraryPdfImport(event).catch((error) => {
-    uploadStatus.textContent = error.message;
+if (subjectSearch) {
+  subjectSearch.addEventListener("input", () => {
+    renderSubjects();
+    renderSources();
   });
-});
+}
 
-blobSyncForm.addEventListener("submit", (event) => {
-  handleBlobSync(event).catch((error) => {
-    uploadStatus.textContent = error.message;
+if (loadExampleButton) {
+  loadExampleButton.addEventListener("click", () => {
+    queryInput.value = exampleQuery;
+    queryInput.focus();
   });
-});
-
-blobLinkForm.addEventListener("submit", (event) => {
-  handleBlobLinkSync(event).catch((error) => {
-    uploadStatus.textContent = error.message;
-  });
-});
-
-topicFilter.addEventListener("change", () => {
-  renderSubjects();
-  renderSources();
-});
-
-subjectFilter.addEventListener("change", () => {
-  renderSources();
-});
-
-topicSearch.addEventListener("input", () => {
-  renderTopics();
-});
-
-subjectSearch.addEventListener("input", () => {
-  renderSubjects();
-  renderSources();
-});
-
-loadExampleButton.addEventListener("click", () => {
-  queryInput.value = exampleQuery;
-  queryInput.focus();
-});
+}
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
