@@ -38,6 +38,8 @@ class handler(BaseHTTPRequestHandler):
         static_map = {
             "/": ROOT / "index.html",
             "/index.html": ROOT / "index.html",
+            "/app.js": DOCS_DIR / "app.js",
+            "/styles.css": DOCS_DIR / "styles.css",
             "/manifest.webmanifest": ROOT / "manifest.webmanifest",
             "/service-worker.js": ROOT / "service-worker.js",
         }

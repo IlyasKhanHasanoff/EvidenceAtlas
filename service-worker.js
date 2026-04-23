@@ -2,8 +2,8 @@ const CACHE_NAME = "evidence-atlas-root-v1";
 const ASSETS = [
   "/",
   "/index.html",
-  "/docs/app.js",
-  "/docs/styles.css",
+  "/app.js",
+  "/styles.css",
   "/manifest.webmanifest",
   "/library/index.json"
 ];
