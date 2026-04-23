@@ -1,4 +1,6 @@
+import base64
 import json
+import os
 import re
 import threading
 import uuid
@@ -8,9 +10,10 @@ from email.parser import BytesParser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib import request
 from urllib.parse import urlparse
 
-from pypdf import PdfReader
+from pypdf import PdfReader, PdfWriter
 
 from evidence_engine import answer_question
 
@@ -22,6 +25,7 @@ INBOX_DIR = ROOT / "library-inbox"
 REPO_DROP_DIR = ROOT / "repo-pdf-drop"
 INDEX_PATH = LIBRARY_DIR / "index.json"
 MANIFEST_PATH = LIBRARY_DIR / "source-manifest.json"
+ENV_PATH = ROOT / ".env"
 
 JOB_LOCK = threading.Lock()
 LIBRARY_LOCK = threading.Lock()
@@ -32,6 +36,20 @@ STOP_WORDS = {
     "it", "of", "on", "or", "that", "the", "there", "this", "to", "was", "what", "when", "where",
     "which", "who", "why", "with"
 }
+
+OCR_BATCH_SIZE = 12
+
+
+def load_env_from_file():
+    if os.environ.get("OPENAI_API_KEY") or not ENV_PATH.exists():
+        return
+
+    for raw_line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip())
 
 
 def normalize_whitespace(text: str) -> str:
@@ -108,6 +126,21 @@ def finalize_excerpt(chunk: str) -> str:
     excerpt = re.sub(r"([.!?])\s+(?:[A-Za-z]{1,3}\s+){2,10}[A-Za-z]{1,3}\s*$", r"\1", excerpt)
     excerpt = re.sub(r"([.!?])\s+[A-Za-z]{1,3}(?:\s+[A-Za-z]{1,3}){0,6}\s*$", r"\1", excerpt)
     return excerpt.strip(" -\"'")
+
+
+def page_needs_ocr(raw_text: str, chunks: list[str]) -> bool:
+    normalized = normalize_whitespace(raw_text)
+    if not normalized:
+        return True
+    cleaned = clean_extracted_text(normalized)
+    if len(cleaned) < 120:
+        return True
+    if not chunks:
+        return True
+    alpha_ratio = sum(1 for char in cleaned if char.isalpha() or char.isspace()) / max(1, len(cleaned))
+    if alpha_ratio < 0.72:
+        return True
+    return False
 
 
 def is_readable_chunk(chunk: str) -> bool:
@@ -279,6 +312,132 @@ def metadata_for_filename(filename: str):
     return load_source_manifest().get(filename, {})
 
 
+def chunked(values, size):
+    for index in range(0, len(values), size):
+        yield values[index:index + size]
+
+
+def build_pdf_subset_bytes(reader: PdfReader, page_numbers: list[int]) -> bytes:
+    from io import BytesIO
+
+    writer = PdfWriter()
+    for page_number in page_numbers:
+        writer.add_page(reader.pages[page_number - 1])
+    stream = BytesIO()
+    writer.write(stream)
+    return stream.getvalue()
+
+
+def parse_json_output(raw_text: str):
+    text = (raw_text or "").strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                return json.loads(text[start:end + 1])
+            except json.JSONDecodeError:
+                return None
+    return None
+
+
+def call_openai_pdf_ocr(pdf_bytes: bytes, filename: str, page_numbers: list[int]):
+    load_env_from_file()
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return {}
+
+    model = os.environ.get("OPENAI_OCR_MODEL", "gpt-4o-mini")
+    payload = {
+        "model": model,
+        "instructions": (
+            "You are extracting readable text from scanned PDF pages for indexing. "
+            "Do not summarize. Do not explain. "
+            "Return strict JSON with one key named pages. "
+            "pages must be an array of objects with keys page and text. "
+            "page must exactly match the original page number supplied in the prompt. "
+            "text must contain a clean transcription of the page, with normalized whitespace. "
+            "Keep wording faithful. Skip only decorative headers, footers, and isolated page numbers when they add no meaning."
+        ),
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "Transcribe these PDF pages for search indexing.\n"
+                            f"Original page numbers in this file batch: {', '.join(str(item) for item in page_numbers)}\n"
+                            "Return JSON only."
+                        ),
+                    },
+                    {
+                        "type": "input_file",
+                        "filename": filename,
+                        "file_data": f"data:application/pdf;base64,{base64.b64encode(pdf_bytes).decode('ascii')}",
+                    },
+                ],
+            }
+        ],
+    }
+
+    req = request.Request(
+        "https://api.openai.com/v1/responses",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with request.urlopen(req, timeout=90) as response:
+            body = json.loads(response.read().decode("utf-8"))
+        parsed = parse_json_output(body.get("output_text", ""))
+    except Exception:
+        return {}
+
+    if not isinstance(parsed, dict):
+        return {}
+
+    pages = {}
+    valid_numbers = set(page_numbers)
+    for item in parsed.get("pages", []):
+        if not isinstance(item, dict):
+            continue
+        try:
+            page_number = int(item.get("page"))
+        except (TypeError, ValueError):
+            continue
+        if page_number not in valid_numbers:
+            continue
+        text = normalize_whitespace(item.get("text", ""))
+        if text:
+            pages[page_number] = text
+    return pages
+
+
+def ocr_pages_with_openai(reader: PdfReader, page_numbers: list[int], original_name: str, progress_callback=None):
+    extracted = {}
+    if not page_numbers:
+        return extracted
+
+    batches = list(chunked(page_numbers, OCR_BATCH_SIZE))
+    total_batches = len(batches)
+    for batch_index, batch in enumerate(batches, start=1):
+        if progress_callback:
+            progress_callback(0, len(batch), 0, f"ocr-batch-{batch_index}-of-{total_batches}")
+        pdf_bytes = build_pdf_subset_bytes(reader, batch)
+        batch_result = call_openai_pdf_ocr(pdf_bytes, original_name, batch)
+        extracted.update(batch_result)
+    return extracted
+
+
 def create_job(filename: str, topic: str, subject: str):
     job_id = uuid.uuid4().hex
     job = {
@@ -352,6 +511,8 @@ def ingest_pdf_into_library(
     source_id = f"SRC-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
     total_pages = len(reader.pages)
     records = []
+    pages_needing_ocr = []
+    used_ocr = False
 
     if progress_callback:
         progress_callback(0, total_pages, 0, "processing")
@@ -359,6 +520,8 @@ def ingest_pdf_into_library(
     for page_number, page in enumerate(reader.pages, start=1):
         text = normalize_whitespace(page.extract_text() or "")
         chunks = split_into_excerpt_chunks(text)
+        if page_needs_ocr(text, chunks):
+            pages_needing_ocr.append(page_number)
         for index, chunk in enumerate(chunks, start=1):
             records.append(
                 {
@@ -379,7 +542,42 @@ def ingest_pdf_into_library(
         if progress_callback:
             progress_callback(page_number, total_pages, len(records), "processing")
 
-    ingestion_status = "indexed" if records else "needs_ocr"
+    if pages_needing_ocr:
+        if progress_callback:
+            progress_callback(0, len(pages_needing_ocr), len(records), "ocr-processing")
+        ocr_pages = ocr_pages_with_openai(reader, pages_needing_ocr, original_name, progress_callback=progress_callback)
+        if ocr_pages:
+            used_ocr = True
+        if used_ocr:
+            page_set = set(pages_needing_ocr)
+            records = [record for record in records if record["page"] not in page_set]
+        for page_number in pages_needing_ocr:
+            ocr_text = ocr_pages.get(page_number, "")
+            if not ocr_text:
+                continue
+            chunks = split_into_excerpt_chunks(ocr_text)
+            for index, chunk in enumerate(chunks, start=1):
+                records.append(
+                    {
+                        "sourceId": f"{source_id}-P{page_number:03d}-OCR{index}",
+                        "sourceRef": source_id,
+                        "title": title,
+                        "author": normalized_author,
+                        "year": normalized_year,
+                        "topic": normalized_topic,
+                        "subject": normalized_subject,
+                        "page": page_number,
+                        "excerpt": chunk,
+                        "keywords": derive_keywords(chunk),
+                        "pdfPath": f"./library/pdfs/{file_path.name}",
+                        "originalFilename": original_name,
+                    }
+                )
+
+    if records:
+        ingestion_status = "ocr_indexed" if used_ocr else "indexed"
+    else:
+        ingestion_status = "needs_ocr"
     source = {
         "sourceId": source_id,
         "title": title,
@@ -390,6 +588,7 @@ def ingest_pdf_into_library(
         "pdfPath": f"./library/pdfs/{file_path.name}",
         "originalFilename": original_name,
         "ingestionStatus": ingestion_status,
+        "ocrUsed": used_ocr,
         "excerptCount": len(records),
     }
 
@@ -543,18 +742,14 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json(
                 answer_question(
                     query,
+                    topic=fields.get("topic", "").strip(),
                     subject=fields.get("subject", "").strip(),
-                    sub_subject=fields.get("subSubject", "").strip(),
                     source_id=fields.get("sourceId", "").strip(),
                 )
             )
             return
 
-        if parsed.path != "/api/upload":
-            if parsed.path not in {"/api/import-inbox", "/api/import-repo-drop"}:
-                self.send_error(HTTPStatus.NOT_FOUND, "Route not found")
-                return
-
+        if parsed.path in {"/api/import-inbox", "/api/import-repo-drop"}:
             fields = parse_json_body(self)
             topic = fields.get("topic", "").strip()
             subject = fields.get("subject", "").strip()
@@ -633,6 +828,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 },
                 status=HTTPStatus.ACCEPTED,
             )
+            return
+
+        if parsed.path != "/api/upload":
+            self.send_error(HTTPStatus.NOT_FOUND, "Route not found")
             return
 
         content_length = int(self.headers.get("Content-Length", "0"))

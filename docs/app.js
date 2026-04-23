@@ -645,7 +645,7 @@ const detectLocalMode = async () => {
     repoDropForm.classList.remove("hidden");
     libraryPdfForm.classList.remove("hidden");
     uploadModeMessage.textContent =
-      "Local mode is active. Add a topic, optionally add a subject, then upload directly, import from library-inbox/, index committed library PDFs, or import developer PDFs from repo-pdf-drop/.";
+      "Local mode is active. Add a topic, optionally add a subject, then upload directly, import from library-inbox/, index committed library PDFs, or import developer PDFs from repo-pdf-drop/. PDFs without a usable text layer will try OCR during ingestion when an OpenAI key is available.";
   } else {
     uploadForm.classList.add("hidden");
     inboxForm.classList.add("hidden");
